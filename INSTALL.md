@@ -97,7 +97,7 @@ A valid result looks like:
 Python 3.12.4
 ```
 
-If Python is missing or older than 3.10, install a current Python 3 version using your company's approved software source or the official Python installer. Then close/reopen Terminal and check `python3 --version` again.
+If Python is missing or older than 3.10, install a current Python 3 version using the official Python installer. Then close/reopen Terminal and check `python3 --version` again.
 
 ## 2. Open the launcher
 
@@ -124,8 +124,6 @@ If that happens:
 9. Click **Open**.
 
 This should normally be required only the first time that downloaded copy is approved.
-
-Only approve the launcher if you intentionally downloaded it from the expected Companion repository and your organization permits it.
 
 ### If macOS says you do not have appropriate access privileges
 
