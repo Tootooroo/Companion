@@ -1,21 +1,25 @@
-# MTV MAP Companion — Installation Guide
+# MTV MAP Companion — Guide
 
-Follow the section for your device from top to bottom. You do not need Git or programming experience.
+This guide is for running **Companion** with the MTV Robot Map.
 
-> **Before you start**
+You do **not** need to know Git, Python, or Playwright to use the Companion. Follow the section for your operating system and complete the steps in order.
+
+> **Important**
 >
-> - Download only from the Companion repository: `https://github.com/Tootooroo/Companion`
-> - **Unzip the download before running anything.**
-> - Run only the launcher for your operating system.
-> - Keep the launcher/terminal window open while using Paperwork.
-> - Sign in to Buganizer and Salesforce when the Companion asks.
-> - Do not run two copies of the Companion at the same time.
+> - Download the Companion from the official repository:  
+>   **https://github.com/Tootooroo/Companion**
+> - **Extract / unzip the download before running anything.**
+> - Run the launcher for your operating system from the extracted folder.
+> - Keep the Companion's terminal / command window open while using Paperwork.
+> - Complete Buganizer and Salesforce sign-in when prompted.
+> - Do not move, rename, delete, or edit Companion files unless you know exactly what you are changing.
+> - Do not run two Companion copies at the same time.
 
 ---
 
 # Download the Companion
 
-When the MTV Robot Map says the Companion is not installed or running, use the Companion download link on the map. It opens the official Companion repository:
+When the MTV Robot Map says the Companion is not installed or running, use the Companion download link on the map. It opens this Companion repository:
 
 ```text
 https://github.com/Tootooroo/Companion
@@ -44,6 +48,8 @@ START_COMPANION.command
 START_COMPANION.sh
 CHROMEOS_SETUP.sh
 ```
+
+You may also see additional project files. That is normal.
 
 ---
 
