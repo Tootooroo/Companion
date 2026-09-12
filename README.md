@@ -2,13 +2,13 @@
 
 MTV MAP Companion is the local desktop helper used by the **MTV Robot Map** to automate Paperwork in Buganizer and Salesforce.
 
-The map runs in a normal web browser. The Companion runs locally on the technician's computer and provides the map with a local service at:
+The map runs in a normal web browser. The Companion runs locally and provides the map with a local service at:
 
 ```text
 http://127.0.0.1:8765
 ```
 
-`127.0.0.1` means **this computer only**. The Companion is not a public server and should not be exposed to the internet or local network.
+`127.0.0.1` means **this computer only**. The Companion is not a public server.
 
 > **New user?** Start with [INSTALL.md](INSTALL.md). It contains the GitHub download instructions and separate setup guides for macOS, Windows, Linux, and ChromeOS.
 
@@ -91,8 +91,6 @@ Customer Responded
 
 before the Companion changes the Case.
 
-This synchronization barrier is important. If the Companion closed Salesforce before the Buganizer backend update arrived, that later update could reopen or overwrite the Case.
-
 The wait is state-driven rather than a fixed delay. The Companion checks Salesforce immediately and continues as soon as the correct status appears.
 
 After synchronization, the Companion:
@@ -126,157 +124,6 @@ The route definitions are stored in:
 salesforce_routes.py
 ```
 
-The Companion only asks the user for values that cannot be determined from the selected Reassign team.
-
-## Mechatronics
-
-### MANUS
-
-```text
-Operation: Data Collection / Teleoperation
-Type: Hardware
-Sub Category: Teleop Headset & Accessories
-Component: Manus
-Resolution Reason: Google Migrated
-```
-
-### OTHER
-
-```text
-Operation: Data Collection / Teleoperation
-Type: Hardware
-Sub Category: Teleop Headset & Accessories
-Component: Misc. HARDWARE
-Resolution Reason: Google Migrated
-```
-
-## Lab Build Team
-
-### GANTRY
-
-```text
-Operation: Robot Start-Up
-Type: Hardware
-Sub Category: Gantry
-Component: Full Assembly
-Resolution Reason: Google Migrated
-```
-
-### SHARPA
-
-The user chooses:
-
-**Operation**
-- `Data Collection / Teleoperation`
-- `Evaluation / Autonomous Behavior`
-
-**Sub Category**
-- `R Hand`
-- `L Hand`
-
-The remaining fields are automatic:
-
-```text
-Type: Hardware
-Component: Sharpa Cable
-Resolution Reason: Google Migrated
-```
-
-### ESTOP
-
-```text
-Operation: Robot Positioning / Locomotion
-Type: Hardware
-Sub Category: E-Stop
-Component: E-Stop
-Resolution Reason: Google Migrated
-```
-
-## Release Team
-
-The user chooses:
-
-**Operation**
-- `Robot Positioning / Locomotion`
-- `Robot Start-Up`
-
-**Component**
-- `Ansible`
-- `Apollo Operator`
-- `Robotics UI`
-- `SW Update`
-- `Configuration`
-- `Unknown Software`
-
-Automatic fields:
-
-```text
-Type: Software
-Resolution Reason: Google Migrated
-```
-
-## Research Team
-
-The user chooses:
-
-**Operation**
-- `Robot Positioning / Locomotion`
-- `Evaluation / Autonomous Behavior`
-
-**Component**
-- `Apollo Operator`
-- `Helios`
-- `Robotics UI`
-- `Configuration`
-- `Orca`
-- `Tracking/IK`
-- `Unknown Software`
-
-Automatic fields:
-
-```text
-Type: Software
-Resolution Reason: Google Migrated
-```
-
-## Engineering Team
-
-The user chooses:
-
-**Operation**
-- `Robot Positioning / Locomotion`
-- `Evaluation / Autonomous Behavior`
-
-**Component**
-- `Apollo Operator`
-- `Helios`
-- `Robotics UI`
-- `Orca`
-- `Configuration`
-- `Unknown Software`
-
-Automatic fields:
-
-```text
-Type: Software
-Resolution Reason: Google Migrated
-```
-
-## Other / `fedynchuk@google.com`
-
-No additional Salesforce choice is required.
-
-```text
-Operation: Robot Start-Up
-Type: Software
-Component: Dev PC
-Resolution Reason: Google Migrated
-```
-
-The approved software routes do not set **Sub Category** because no Sub Category value is defined for those routes.
-
----
-
 # Companion interfaces
 
 There are two Companion interfaces with different purposes.
@@ -293,7 +140,7 @@ It shows:
 
 If either service needs authentication, the browser remains visible.
 
-When both services are connected, the managed browser minimizes automatically.
+When both services are connected, the managed browser minimizes automatically on first launch.
 
 ## MTV Paperwork window
 
@@ -489,13 +336,6 @@ Supported desktop targets:
 - Linux desktop
 - ChromeOS through the Linux development environment (Crostini)
 
-Not currently supported as native installations:
-
-- iPhone / iPad
-- Android phones/tablets
-- ChromeOS without Linux enabled
-- locked-down devices that cannot run Python/local processes
-
 For download and setup instructions, see **[INSTALL.md](INSTALL.md)**.
 
 ---
@@ -543,21 +383,6 @@ After installation:
 
 ---
 
-# Updating
-
-To update the Companion:
-
-1. Use **End session**.
-2. Download the latest repository ZIP.
-3. Extract it into a new folder.
-4. Run the launcher for your operating system.
-
-The persistent authentication profile is stored outside the source folder, so a normal source update should not erase saved sign-in.
-
-See **[INSTALL.md](INSTALL.md)** for the full update instructions.
-
----
-
 # Health check
 
 While the Companion is running, open:
@@ -601,43 +426,6 @@ Changes to these can break communication:
 ## Keep browser mutations serialized
 
 The Companion intentionally routes synchronous Playwright work through one browser worker. Do not move browser mutations onto arbitrary HTTP/request threads.
-
-## Preserve the Salesforce synchronization barrier
-
-For Reassign, do not move Salesforce writes ahead of the `Customer Responded` check.
-
-The required ordering is:
-
-```text
-Buganizer Commit
-      ↓
-Wait for Salesforce Customer Responded
-      ↓
-Check / assign Salesforce owner
-      ↓
-Post Details to Feed
-      ↓
-Check / update routed fields
-      ↓
-Set Closed
-      ↓
-Verify
-```
-
-Removing that barrier can reintroduce the race where the later Buganizer backend synchronization reopens or overwrites an already-closed Salesforce Case.
-
-## Keep Salesforce operations idempotent
-
-Before changing Salesforce, check whether the desired state is already present.
-
-This applies to:
-
-- Case Owner;
-- Feed Details;
-- routed fields;
-- Closed status.
-
-This makes retries safer and avoids unnecessary Lightning edits.
 
 ## External UI changes can break selectors
 
