@@ -32,10 +32,12 @@ from paperwork import (
 )
 from salesforce_routes import (
     SalesforceRouteError,
+    get_claim_form_spec,
     get_reassign_form_spec,
+    resolve_claim_route,
     resolve_reassign_route,
 )
-from spine_browser import SpineBrowser
+from browser_manager import BrowserManager
 
 
 HOST = "127.0.0.1"
@@ -93,7 +95,7 @@ def allowed_sf_url(value: str) -> str:
 @dataclass
 class Workspace:
     # Playwright objects. These are ONLY touched by BrowserWorker's one thread.
-    browser: SpineBrowser | None = None
+    browser: BrowserManager | None = None
     bug_page: Any = None
     sf_page: Any = None
 
@@ -357,12 +359,44 @@ class Workspace:
             self.assignee_email = "robotics-support@google.com"
             self.details = ""
             self.result_message = ""
+            self.sf_owner = ""
+            self.sf_owner_claimed = False
+            self.sf_description_saved = False
+            self.sf_fields_saved = False
+            self.sf_closed = False
+
+    def begin_salesforce_claim(
+        self,
+        *,
+        details: str,
+        result_message: str,
+    ) -> None:
+        """Buganizer Claim is committed; wait for backend Salesforce sync."""
+        with self.lock:
+            self.action = "salesforce_claim_wait"
+            self.team = ""
+            self.assignee_email = "robotics-support@google.com"
+            self.details = details
+            self.result_message = result_message
+            self.sf_owner = ""
+            self.sf_owner_claimed = False
+            self.sf_description_saved = False
+            self.sf_fields_saved = False
+            self.sf_closed = False
+
+    def show_salesforce_claim_form(self) -> None:
+        """Expose Claim routing only after Salesforce reached Customer Responded."""
+        with self.lock:
+            if self.action != "salesforce_claim_wait":
+                return
+            self.action = "salesforce_claim_form"
 
     def finish_claim(
         self,
         *,
         details: str,
         result_message: str,
+        sf_owner: str = "",
     ) -> None:
         with self.lock:
             self.action = "claim_done"
@@ -370,6 +404,8 @@ class Workspace:
             self.assignee_email = "robotics-support@google.com"
             self.details = details
             self.result_message = result_message
+            if sf_owner:
+                self.sf_owner = sf_owner
 
     @staticmethod
     def usable(page: Any) -> bool:
@@ -587,7 +623,7 @@ class Workspace:
             except Exception:
                 self.close_browser()
 
-        self.browser = SpineBrowser()
+        self.browser = BrowserManager()
         self.browser.__enter__()
 
     def new_page(self) -> Any:
@@ -1418,6 +1454,146 @@ class Workspace:
         }
 
 
+    def wait_for_salesforce_claim_sync(self) -> str:
+        """Wait for Buganizer's backend update before showing Claim choices.
+
+        This method performs no Salesforce mutation. It only verifies the exact
+        Case and waits for the authoritative Customer Responded status.
+        """
+        snap = self.snapshot()
+        if snap["action"] not in {
+            "salesforce_claim_wait",
+            "salesforce_claim_form",
+        }:
+            raise PaperworkError(
+                "Salesforce Claim synchronization is not ready."
+            )
+
+        self._ensure_salesforce_case_for_commit(snap)
+        assert self.sf_page is not None
+
+        self.set_managed_window_state(self.sf_page, "normal")
+        try:
+            self.sf_page.bring_to_front()
+        except Exception:
+            pass
+
+        self.update_launch(
+            int(snap["session_id"]),
+            sf_phase="Waiting for Buganizer to sync to Salesforce...",
+        )
+        status = wait_for_salesforce_bug_sync(
+            self.sf_page,
+            clean(snap["bug_number"]),
+            timeout_seconds=120.0,
+        )
+        self.update_launch(
+            int(snap["session_id"]),
+            sf_phase=f"Salesforce synchronized ({status}).",
+        )
+        return status
+
+
+    def execute_salesforce_claim(
+        self,
+        fields: dict[str, str],
+    ) -> dict[str, Any]:
+        """Complete the Salesforce half of Claim.
+
+        Ordering intentionally matches Reassign:
+          Buganizer has already committed;
+          wait for Salesforce Customer Responded;
+          check/assign current Salesforce owner;
+          post the same Details to Feed;
+          set only mismatched routed fields;
+          close only if needed;
+          verify each mutation.
+        """
+        snap = self.snapshot()
+        if snap["action"] != "salesforce_claim_form":
+            raise PaperworkError(
+                "Salesforce Claim closeout is not ready. Complete Buganizer first."
+            )
+
+        self._ensure_salesforce_case_for_commit(snap)
+        assert self.sf_page is not None
+
+        self.set_managed_window_state(self.sf_page, "normal")
+        try:
+            self.sf_page.bring_to_front()
+        except Exception:
+            pass
+
+        bug_number = clean(snap["bug_number"])
+        details = clean(snap.get("details"))
+
+        self.update_launch(
+            int(snap["session_id"]),
+            sf_phase="Waiting for Buganizer to sync to Salesforce...",
+        )
+        sync_status = wait_for_salesforce_bug_sync(
+            self.sf_page,
+            bug_number,
+            timeout_seconds=120.0,
+        )
+
+        self.update_launch(
+            int(snap["session_id"]),
+            sf_phase=f"Salesforce synchronized ({sync_status}). Checking owner...",
+        )
+        owner = claim_salesforce_case(self.sf_page, bug_number)
+        self.update_salesforce_progress(
+            owner=owner,
+            owner_claimed=True,
+        )
+
+        if details:
+            self.update_launch(
+                int(snap["session_id"]),
+                sf_phase="Checking Salesforce Feed...",
+            )
+            post_salesforce_feed_comment(
+                self.sf_page,
+                bug_number,
+                details,
+            )
+        self.update_salesforce_progress(description_saved=True)
+
+        self.update_launch(
+            int(snap["session_id"]),
+            sf_phase="Checking Salesforce routing fields...",
+        )
+        set_salesforce_case_fields(
+            self.sf_page,
+            bug_number,
+            fields,
+        )
+        self.update_salesforce_progress(fields_saved=True)
+
+        self.update_launch(
+            int(snap["session_id"]),
+            sf_phase="Checking Salesforce Case status...",
+        )
+        close_salesforce_case(
+            self.sf_page,
+            bug_number,
+        )
+        self.update_salesforce_progress(closed=True)
+
+        self.update_launch(
+            int(snap["session_id"]),
+            sf_phase="Salesforce paperwork complete",
+        )
+
+        return {
+            "owner": owner,
+            "details_saved": bool(details),
+            "fields": dict(fields),
+            "closed": True,
+            "sync_status": sync_status,
+        }
+
+
 WORKSPACE = Workspace()
 
 
@@ -1790,7 +1966,79 @@ def render_salesforce_reassign_form(state: dict[str, Any]) -> str:
 
       <div class="two form-actions">
         <button class="secondary" onclick="exitWorkspace()">Exit</button>
-        <button class="primary" id="salesforceCommit" onclick="submitSalesforceReassign()">Complete Salesforce</button>
+        <button class="primary" id="salesforceCommit" onclick="submitSalesforceReassign()">Complete</button>
+      </div>
+    </section>"""
+
+
+
+
+def render_salesforce_claim_form(state: dict[str, Any]) -> str:
+    """Render the Salesforce Claim taxonomy after Buganizer Claim commits."""
+    try:
+        spec = get_claim_form_spec()
+    except SalesforceRouteError as error:
+        return (
+            '<section class="card"><div class="eyebrow">Salesforce</div>'
+            '<h2>Claim route unavailable</h2>'
+            f'<p class="muted">{html.escape(str(error))}</p>'
+            '<button class="secondary full" onclick="exitWorkspace()">Exit</button>'
+            '</section>'
+        )
+
+    selectors: list[str] = []
+    for index, selector in enumerate(spec.get("selectors", [])):
+        key = clean(selector.get("key"))
+        label = clean(selector.get("label"))
+        options = [
+            clean(value)
+            for value in selector.get("options", [])
+            if clean(value)
+        ]
+        when = selector.get("when") or {}
+        when_key = clean(when.get("key"))
+        when_value = clean(when.get("value"))
+
+        attrs = ' class="salesforce-field"'
+        if when_key and when_value:
+            attrs += (
+                f' data-when-key="{html.escape(when_key, quote=True)}"'
+                f' data-when-value="{html.escape(when_value, quote=True)}"'
+                ' hidden'
+            )
+
+        field_id = f"sf_claim_{key}_{index}"
+        option_html = ['<option value="">Choose…</option>']
+        option_html.extend(
+            f'<option value="{html.escape(value, quote=True)}">'
+            f'{html.escape(value)}</option>'
+            for value in options
+        )
+
+        selectors.append(
+            '<div' + attrs + '>'
+            f'<label class="form-label salesforce-label" '
+            f'for="{html.escape(field_id, quote=True)}">'
+            f'{html.escape(label)}</label>'
+            '<div class="select-wrap">'
+            f'<select class="form-select" '
+            f'id="{html.escape(field_id, quote=True)}" '
+            f'data-salesforce-select="{html.escape(key, quote=True)}" '
+            'onchange="updateSalesforceRouteVisibility()" required>'
+            + ''.join(option_html) +
+            '</select></div></div>'
+        )
+
+    return f"""
+    <section class="card">
+      <div class="eyebrow">Salesforce</div>
+      <h2>Complete Claim</h2>
+      {''.join(selectors)}
+
+      <div class="two form-actions">
+        <button class="secondary" onclick="exitWorkspace()">Exit</button>
+        <button class="primary" id="salesforceClaimCommit"
+          onclick="submitSalesforceClaim()">Complete</button>
       </div>
     </section>"""
 
@@ -1870,6 +2118,24 @@ def render_page(message: str = "") -> str:
             <button class="primary" id="claimCommit" onclick="submitClaim()">Commit</button>
           </div>
         </section>"""
+    elif state["action"] == "salesforce_claim_wait":
+        body = f"""
+        <section class="card">
+          <div class="eyebrow">Claim</div>
+          <h2>Waiting for Salesforce</h2>
+          <p class="muted">
+            Buganizer is complete. Waiting for the backend update to change
+            Salesforce to <strong>Customer Responded</strong>.
+          </p>
+          <p class="muted">{html.escape(state.get("sf_phase") or "")}</p>
+          <div class="two form-actions">
+            <button class="secondary" onclick="exitWorkspace()">Exit</button>
+            <button class="primary" id="claimSyncRetry"
+              onclick="retryClaimSync()">Check again</button>
+          </div>
+        </section>"""
+    elif state["action"] == "salesforce_claim_form":
+        body = render_salesforce_claim_form(state)
     elif state["action"] == "claim_done":
         body = f"""
         <section class="card">
@@ -1878,8 +2144,9 @@ def render_page(message: str = "") -> str:
           <div class="completion-summary">
             <strong>robotics-support@google.com</strong>
             <span>Buganizer</span>
+            <span>Salesforce: {html.escape(state.get("sf_owner") or "Current user")} · Closed</span>
           </div>
-          <p class="muted">{html.escape(state["result_message"] or "Buganizer claim complete.")}</p>
+          <p class="muted">{html.escape(state["result_message"] or "Buganizer and Salesforce claim complete.")}</p>
           <button class="primary full" onclick="exitWorkspace()">Exit</button>
         </section>"""
     elif state["action"] == "reassign_select":
@@ -2880,6 +3147,26 @@ async function submitClaim() {{
   }}
 }}
 
+async function retryClaimSync() {{
+  const button=document.getElementById('claimSyncRetry');
+  if(button){{
+    button.disabled=true;
+    button.textContent='Checking…';
+  }}
+  try {{
+    await post({{
+      action:'submit_claim',
+      details:''
+    }});
+  }} catch (err) {{
+    if(button){{
+      button.disabled=false;
+      button.textContent='Check again';
+    }}
+    alert(err.message || String(err));
+  }}
+}}
+
 async function team(name) {{
   try {{
     await post({{action:'select_reassign',team:name}});
@@ -2927,22 +3214,36 @@ async function submitReassign() {{
 
 
 function updateSalesforceRouteVisibility() {{
-  const values={{}};
-  document.querySelectorAll('[data-salesforce-select]').forEach(select => {{
-    values[String(select.dataset.salesforceSelect||'')]=String(select.value||'');
-  }});
+  // Claim has chained conditional fields (Type -> Sub Category -> Component).
+  // Resolve visibility repeatedly so changing a parent clears/hides every stale
+  // dependent selector in the same UI event.
+  for(let pass=0; pass<4; pass++){{
+    const values={{}};
+    document.querySelectorAll('[data-salesforce-select]').forEach(select => {{
+      const group=select.closest('.salesforce-field');
+      if(!group || !group.hidden){{
+        values[String(select.dataset.salesforceSelect||'')]=String(select.value||'');
+      }}
+    }});
 
-  document.querySelectorAll('.salesforce-field[data-when-key]').forEach(group => {{
-    const key=String(group.dataset.whenKey||'');
-    const wanted=String(group.dataset.whenValue||'');
-    const visible=values[key]===wanted;
-    group.hidden=!visible;
-    const select=group.querySelector('[data-salesforce-select]');
-    if(select){{
-      select.required=visible;
-      if(!visible) select.value='';
-    }}
-  }});
+    let changed=false;
+    document.querySelectorAll('.salesforce-field[data-when-key]').forEach(group => {{
+      const key=String(group.dataset.whenKey||'');
+      const wanted=String(group.dataset.whenValue||'');
+      const visible=values[key]===wanted;
+      if(group.hidden===visible) changed=true;
+      group.hidden=!visible;
+      const select=group.querySelector('[data-salesforce-select]');
+      if(select){{
+        select.required=visible;
+        if(!visible && select.value){{
+          select.value='';
+          changed=true;
+        }}
+      }}
+    }});
+    if(!changed) break;
+  }}
 }}
 
 async function submitSalesforceReassign() {{
@@ -2977,11 +3278,56 @@ async function submitSalesforceReassign() {{
   }} catch (err) {{
     if(button){{
       button.disabled=false;
-      button.textContent='Complete Salesforce';
+      button.textContent='Complete';
     }}
     alert(err.message || String(err));
   }}
 }}
+
+
+async function submitSalesforceClaim() {{
+  const button=document.getElementById('salesforceClaimCommit');
+  const selections={{}};
+
+  updateSalesforceRouteVisibility();
+
+  for(const select of document.querySelectorAll('[data-salesforce-select]')){{
+    const group=select.closest('.salesforce-field');
+    if(group && group.hidden) continue;
+
+    const key=String(select.dataset.salesforceSelect||'').trim();
+    const value=String(select.value||'').trim();
+    if(select.required && !value){{
+      alert(
+        'Choose ' +
+        String(select.previousElementSibling?.textContent || select.id || 'a Salesforce option') +
+        '.'
+      );
+      select.focus();
+      return;
+    }}
+    if(key) selections[key]=value;
+  }}
+
+  if(button){{
+    button.disabled=true;
+    button.textContent='Working…';
+  }}
+
+  try {{
+    await post({{
+      action:'submit_salesforce_claim',
+      selections
+    }});
+  }} catch (err) {{
+    if(button){{
+      button.disabled=false;
+      button.textContent='Complete';
+    }}
+    alert(err.message || String(err));
+  }}
+}}
+
 
 document.addEventListener('DOMContentLoaded', updateSalesforceRouteVisibility);
 
@@ -3147,7 +3493,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": True,
                     "service": "MTV Paperwork Companion",
-                    "version": "3.11",
+                    "version": "3.13",
                     "platform": platform.system().lower(),
                     "ready": bool(state.get("startup_ready")),
                     "buganizer_authenticated": bool(state.get("startup_bug_authenticated")),
@@ -3336,6 +3682,53 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
 
+            # If Buganizer already committed on an earlier attempt, never run
+            # Claim again. Only retry the read-only Salesforce sync barrier.
+            if state["action"] == "salesforce_claim_wait":
+                try:
+                    sync_status = BROWSER_WORKER.submit(
+                        WORKSPACE.wait_for_salesforce_claim_sync,
+                        wait=True,
+                        timeout=150,
+                    )
+                except FutureTimeoutError:
+                    self.json(
+                        {
+                            "ok": False,
+                            "error": "Buganizer Claim is already complete, but "
+                                     "Salesforce has not reached Customer Responded "
+                                     "yet. No Salesforce changes were made. Press "
+                                     "Commit again to re-check safely.",
+                        },
+                        HTTPStatus.GATEWAY_TIMEOUT,
+                    )
+                    return
+                except Exception as error:
+                    self.json(
+                        {"ok": False, "error": str(error)},
+                        HTTPStatus.INTERNAL_SERVER_ERROR,
+                    )
+                    return
+
+                WORKSPACE.show_salesforce_claim_form()
+                print(
+                    f"Salesforce sync ready for Claim Bug "
+                    f"{state['bug_number']}: {sync_status}"
+                )
+                self.json({"ok": True, "next": "salesforce"})
+                return
+
+            if state["action"] != "claim_form":
+                self.json(
+                    {
+                        "ok": False,
+                        "error": "The Claim step is no longer awaiting a "
+                                 "Buganizer commit.",
+                    },
+                    HTTPStatus.CONFLICT,
+                )
+                return
+
             details = str(payload.get("details") or "")
 
             try:
@@ -3373,16 +3766,52 @@ class Handler(BaseHTTPRequestHandler):
                 else "Buganizer was already assigned to robotics-support@google.com."
             )
 
-            WORKSPACE.finish_claim(
+            # Persist the successful Buganizer commit BEFORE waiting. If the
+            # backend sync is slow, retries resume here rather than reposting
+            # the Buganizer comment or reassignment.
+            WORKSPACE.begin_salesforce_claim(
                 details=result["details"],
                 result_message=assignee_note + details_note,
             )
 
             print(
-                f"Claim completed on Buganizer for Bug "
-                f"{state['bug_number']}: robotics-support@google.com"
+                f"Buganizer Claim completed for Bug "
+                f"{state['bug_number']}: robotics-support@google.com. "
+                "Waiting for Salesforce Customer Responded."
             )
-            self.json({"ok": True})
+
+            try:
+                sync_status = BROWSER_WORKER.submit(
+                    WORKSPACE.wait_for_salesforce_claim_sync,
+                    wait=True,
+                    timeout=150,
+                )
+            except FutureTimeoutError:
+                self.json(
+                    {
+                        "ok": False,
+                        "error": "Buganizer Claim completed successfully, but "
+                                 "Salesforce has not reached Customer Responded "
+                                 "yet. No Salesforce changes were made. Press "
+                                 "Commit again to re-check safely.",
+                    },
+                    HTTPStatus.GATEWAY_TIMEOUT,
+                )
+                return
+            except Exception as error:
+                self.json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+                return
+
+            WORKSPACE.show_salesforce_claim_form()
+            print(
+                f"Salesforce sync ready for Claim Bug "
+                f"{state['bug_number']}: {sync_status}. "
+                "Showing Claim route choices."
+            )
+            self.json({"ok": True, "next": "salesforce"})
             return
 
         if action == "back_to_reassign":
@@ -3486,6 +3915,89 @@ class Handler(BaseHTTPRequestHandler):
                 f"{result['assignee_email']}. Waiting for Salesforce route."
             )
             self.json({"ok": True, "next": "salesforce"})
+            return
+
+        if action == "submit_salesforce_claim":
+            state = WORKSPACE.snapshot()
+            if state["action"] != "salesforce_claim_form":
+                self.json(
+                    {
+                        "ok": False,
+                        "error": "Complete the Buganizer Claim step first.",
+                    },
+                    HTTPStatus.CONFLICT,
+                )
+                return
+
+            selections = payload.get("selections") or {}
+            if not isinstance(selections, dict):
+                self.json(
+                    {
+                        "ok": False,
+                        "error": "Invalid Salesforce Claim selections.",
+                    },
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+
+            try:
+                route = resolve_claim_route(selections)
+            except SalesforceRouteError as error:
+                self.json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+
+            fields = route.as_dict()
+
+            try:
+                result = BROWSER_WORKER.submit(
+                    WORKSPACE.execute_salesforce_claim,
+                    fields,
+                    wait=True,
+                    timeout=420,
+                )
+            except FutureTimeoutError:
+                self.json(
+                    {
+                        "ok": False,
+                        "error": "Salesforce is taking longer than expected. "
+                                 "It may still be waiting for the Buganizer sync. "
+                                 "Check Salesforce before retrying; completed "
+                                 "steps are retry-safe.",
+                    },
+                    HTTPStatus.GATEWAY_TIMEOUT,
+                )
+                return
+            except Exception as error:
+                self.json(
+                    {"ok": False, "error": str(error)},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+                return
+
+            bug_note = clean(state.get("result_message"))
+            sf_note = (
+                f" Salesforce was assigned to "
+                f"{result['owner'] or 'the current user'}, "
+                "the Claim fields were saved"
+            )
+            if state.get("details"):
+                sf_note += ", the same Details were posted to the Salesforce Feed"
+            sf_note += ", and the Case was closed."
+
+            WORKSPACE.finish_claim(
+                details=state["details"],
+                result_message=(bug_note + sf_note).strip(),
+                sf_owner=result["owner"],
+            )
+
+            print(
+                f"Salesforce Claim closeout completed for Bug "
+                f"{state['bug_number']}: owner={result['owner']}"
+            )
+            self.json({"ok": True})
             return
 
         if action == "submit_salesforce_reassign":
