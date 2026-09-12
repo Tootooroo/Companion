@@ -1,69 +1,69 @@
 # MTV MAP Companion — Installation Guide
 
-This guide is for running **Companion** with the MTV Robot Map.
+Follow the section for your device from top to bottom. You do not need Git or programming experience.
 
-You do **not** need to know Git, Python, or Playwright to use the Companion. Follow the section for your operating system and complete the steps in order.
-
-> **Important**
+> **Before you start**
 >
-> - Download the Companion from the official repository:  
->   **https://github.com/Tootooroo/Companion**
-> - **Extract / unzip the download before running anything.**
-> - Run the launcher for your operating system from the extracted folder.
-> - Keep the Companion's terminal / command window open while using Paperwork.
-> - Complete Buganizer and Salesforce sign-in when prompted.
-> - Do not move, rename, delete, or edit Companion files unless you know exactly what you are changing.
-> - Do not run two Companion copies at the same time.
+> - Download only from the Companion repository: `https://github.com/Tootooroo/Companion`
+> - **Unzip the download before running anything.**
+> - Run only the launcher for your operating system.
+> - Keep the launcher/terminal window open while using Paperwork.
+> - Sign in to Buganizer and Salesforce when the Companion asks.
+> - Do not run two copies of the Companion at the same time.
 
 ---
 
-# 1. How the download works
+# Download the Companion
 
-If the MTV Robot Map cannot find the Companion, the map's Companion link will take you to:
+When the MTV Robot Map says the Companion is not installed or running, use the Companion download link on the map. It opens the official Companion repository:
 
 ```text
 https://github.com/Tootooroo/Companion
 ```
 
-On the GitHub page:
+On GitHub:
 
 1. Click the green **Code** button above the file list.
 2. Click **Download ZIP**.
-3. Wait for the ZIP file to finish downloading.
-4. Find the downloaded ZIP in your **Downloads** folder.
-5. Extract / unzip it.
-6. Open the extracted folder.
-
-GitHub normally names the extracted folder something similar to:
+3. Wait for the download to finish.
+4. Open your **Downloads** folder.
+5. Extract / unzip the downloaded ZIP.
+6. Open the extracted folder. GitHub normally names it something similar to:
 
 ```text
 Companion-main
 ```
 
-That folder name is fine. You do not need to rename it.
+> **Important:** Do not run the Companion from inside the ZIP. Extract it first. The Companion needs access to all of the files in the folder and must be able to create its private Python environment.
 
-**Do not run the Companion from inside the ZIP.** It must be extracted so it can create its private Python environment and access the other Companion files.
-
-A normal extracted Companion folder should contain files similar to:
+Inside the extracted folder you should see launchers including:
 
 ```text
-Companion-main/
-├── README.md
-├── INSTALL.md
-├── bootstrap.py
-├── companion.py
-├── paperwork.py
-├── salesforce_routes.py
-├── spine_browser.py
-├── runtime_paths.py
-├── requirements.txt
-├── START_COMPANION.bat
-├── START_COMPANION.command
-├── START_COMPANION.sh
-└── CHROMEOS_SETUP.sh
+START_COMPANION.bat
+START_COMPANION.command
+START_COMPANION.sh
+CHROMEOS_SETUP.sh
 ```
 
-Choose your device below.
+---
+
+# Choose your device
+
+You only need to follow the installation section for your operating system.
+
+### [🍎 macOS](#macos)
+Use `START_COMPANION.command`
+
+### [🪟 Windows 10 / 11](#windows-10--11)
+Use `START_COMPANION.bat`
+
+### [🐧 Linux](#linux)
+Use `START_COMPANION.sh`
+
+### [💻 Chromebook / ChromeOS](#chromebook--chromeos)
+Run `CHROMEOS_SETUP.sh` once, then use `START_COMPANION.sh`
+
+After completing your operating-system setup, continue to the shared **First Launch & Sign-In** section.
 
 ---
 
@@ -97,7 +97,7 @@ A valid result looks like:
 Python 3.12.4
 ```
 
-If Python is missing or older than 3.10, install a current Python 3 version using the official Python installer. Then close/reopen Terminal and check `python3 --version` again.
+If Python is missing or older than 3.10, install a current Python 3 version using your company's approved software source or the official Python installer. Then close/reopen Terminal and check `python3 --version` again.
 
 ## 2. Open the launcher
 
@@ -124,6 +124,8 @@ If that happens:
 9. Click **Open**.
 
 This should normally be required only the first time that downloaded copy is approved.
+
+Only approve the launcher if you intentionally downloaded it from the expected Companion repository and your organization permits it.
 
 ### If macOS says you do not have appropriate access privileges
 
@@ -171,40 +173,11 @@ This is normal. The Companion creates its own `.venv` and installs the required 
 
 The first launch may take longer because dependencies or Chromium may need to download. **Do not close Terminal while setup is running.**
 
-## 4. Complete sign-in
+## 4. Continue to First Launch & Sign-In
 
-The managed browser opens with:
+Your Mac setup is complete. Continue to [First Launch & Sign-In](#first-launch--sign-in).
 
-- MTV Companion
-- Buganizer
-- Salesforce
-
-If Buganizer requests authentication, complete your normal company/Google sign-in and MFA.
-
-If Salesforce opens Salesforce/Okta login, complete sign-in and MFA and wait for the actual Salesforce Lightning page.
-
-Wait until the MTV Companion page shows:
-
-```text
-Buganizer    Connected
-Salesforce   Connected
-```
-
-Once both are connected, the managed browser minimizes automatically.
-
-## 5. Use Paperwork
-
-Open the MTV Robot Map on the same Mac.
-
-Select a robot and choose:
-
-```text
-Paperwork → Begin
-```
-
-Leave the Companion running while doing paperwork.
-
-When you are completely finished, restore the managed browser and click **End session**.
+[↑ Back to device selection](#choose-your-device)
 
 ---
 
@@ -280,30 +253,11 @@ Installing/updating Companion dependencies...
 
 Wait for setup to finish and leave the Command Prompt window open.
 
-## 4. Complete sign-in
+## 4. Continue to First Launch & Sign-In
 
-The managed browser opens MTV Companion, Buganizer, and Salesforce.
+Your Windows setup is complete. Continue to [First Launch & Sign-In](#first-launch--sign-in).
 
-Complete any Google/company and Salesforce/Okta authentication.
-
-Wait for:
-
-```text
-Buganizer    Connected
-Salesforce   Connected
-```
-
-The browser minimizes after both are connected.
-
-## 5. Use Paperwork
-
-Open the MTV Robot Map on the same computer and choose:
-
-```text
-Paperwork → Begin
-```
-
-When completely finished, use **End session** from the managed MTV Companion page.
+[↑ Back to device selection](#choose-your-device)
 
 ---
 
@@ -396,17 +350,11 @@ Then restart:
 ./START_COMPANION.sh
 ```
 
-## 5. Sign in and use Paperwork
+## 5. Continue to First Launch & Sign-In
 
-Complete Buganizer and Salesforce authentication.
+Your Linux setup is complete. Continue to [First Launch & Sign-In](#first-launch--sign-in).
 
-Wait until both show **Connected**, then open the MTV Robot Map and use:
-
-```text
-Paperwork → Begin
-```
-
-Use **End session** when completely finished.
+[↑ Back to device selection](#choose-your-device)
 
 ---
 
@@ -494,7 +442,84 @@ Run:
 
 For future sessions, normally run only `START_COMPANION.sh`; the ChromeOS setup script is not needed every time.
 
-Complete Buganizer and Salesforce authentication, wait for both to show **Connected**, then use **Paperwork → Begin** from the MTV Robot Map.
+## 5. Continue to First Launch & Sign-In
+
+Your ChromeOS setup is complete. Continue to [First Launch & Sign-In](#first-launch--sign-in).
+
+[↑ Back to device selection](#choose-your-device)
+
+---
+
+# First Launch & Sign-In
+
+These steps are the same on macOS, Windows, Linux, and ChromeOS.
+
+## 1. Let the Companion start
+
+After you run the launcher, keep its Terminal / Command Prompt window open.
+
+On a first run, the Companion may create its private Python environment and install required packages. Let this finish before closing anything.
+
+The managed browser then opens with:
+
+- **MTV Companion**
+- **Buganizer**
+- **Salesforce**
+
+## 2. Complete Buganizer sign-in if needed
+
+If Buganizer asks you to sign in:
+
+1. Complete your normal Google/company sign-in.
+2. Complete MFA if requested.
+3. Wait for Partner IssueTracker to finish loading.
+
+If you are already signed in, no action is required.
+
+## 3. Complete Salesforce sign-in if needed
+
+If Salesforce opens Salesforce/Okta login:
+
+1. Complete your normal company sign-in.
+2. Complete MFA if requested.
+3. Wait for the actual Salesforce Lightning page to load.
+
+If you are already signed in, no action is required.
+
+## 4. Wait for both services to be ready
+
+The MTV Companion control page should show:
+
+```text
+Buganizer    Connected
+Salesforce   Connected
+```
+
+If either service still says **Sign in**, return to that browser tab and finish authentication.
+
+Once both services are connected, the managed browser minimizes automatically.
+
+## 5. Open Paperwork from the map
+
+Open the MTV Robot Map on the **same computer** where the Companion is running.
+
+Select a robot and choose:
+
+```text
+Paperwork → Begin
+```
+
+The Paperwork window opens and the Companion handles the local paperwork workflow.
+
+Leave the Companion running while you are using Paperwork.
+
+When you are completely finished, restore the managed MTV Companion browser and click:
+
+```text
+End session
+```
+
+[↑ Back to device selection](#choose-your-device)
 
 ---
 
