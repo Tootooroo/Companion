@@ -1,6 +1,6 @@
 # MTV MAP Companion — Installation & First-Run Guide
 
-This guide is for technicians who want to use the **MTV MAP Companion** with the MTV Robot Map.
+This guide is for running **Companion** with the MTV Robot Map.
 
 You do **not** need to know Git, Python, or Playwright to use the Companion. Follow the section for your operating system and complete the steps in order.
 
