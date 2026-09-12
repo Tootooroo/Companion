@@ -69,8 +69,6 @@ Use `START_COMPANION.sh`
 ### [💻 Chromebook / ChromeOS](#chromebook--chromeos)
 Run `CHROMEOS_SETUP.sh` once, then use `START_COMPANION.sh`
 
-After completing your operating-system setup, continue to the shared **First Launch & Sign-In** section.
-
 ---
 
 # macOS
@@ -83,13 +81,7 @@ START_COMPANION.command
 
 ## 1. Check Python
 
-Open **Terminal** from:
-
-```text
-Applications → Utilities → Terminal
-```
-
-Run:
+Open **Terminal** and run:
 
 ```bash
 python3 --version
@@ -103,7 +95,7 @@ A valid result looks like:
 Python 3.12.4
 ```
 
-If Python is missing or older than 3.10, install a current Python 3 version using your company's approved software source or the official Python installer. Then close/reopen Terminal and check `python3 --version` again.
+If Python is missing or older than 3.10, install a current Python 3 version using the official Python installer. Then close/reopen Terminal and check `python3 --version` again.
 
 ## 2. Open the launcher
 
@@ -131,33 +123,7 @@ If that happens:
 
 This should normally be required only the first time that downloaded copy is approved.
 
-Only approve the launcher if you intentionally downloaded it from the expected Companion repository and your organization permits it.
-
-### If macOS says you do not have appropriate access privileges
-
-Open Terminal and type:
-
-```bash
-cd 
-```
-
-Leave the space after `cd` and **do not press Enter yet**.
-
-Drag the extracted `Companion-main` folder from Finder into Terminal. The folder path will appear automatically.
-
-Press Enter.
-
-Then run:
-
-```bash
-chmod +x START_COMPANION.command
-```
-
-Then start it with:
-
-```bash
-./START_COMPANION.command
-```
+Only approve the launcher if you intentionally downloaded it from the expected Companion repository.
 
 ## 3. Let first-time setup finish
 
@@ -219,7 +185,7 @@ python --version
 
 You need **Python 3.10 or newer**.
 
-If Python is missing, install a current Python 3 version using your company's approved software source or the official Python installer.
+If Python is missing, install a current Python 3 version using the official Python installer.
 
 When using the normal Windows Python installer, enable:
 
@@ -239,7 +205,7 @@ START_COMPANION.bat
 
 A Command Prompt window opens.
 
-If Windows displays a security warning, continue only if you downloaded the files from the expected Companion repository and your organization allows them. If company security blocks the launcher, contact your administrator instead of disabling security software.
+If Windows displays a security warning, continue only if you downloaded the files from the expected Companion repository.
 
 ## 3. Let first-time setup finish
 
@@ -594,125 +560,6 @@ The Companion stays running so you can work on another robot.
 **End session** on the MTV Companion control page shuts down the entire Companion.
 
 Use **End session** when you are done for the day/session.
-
----
-
-# Updating the Companion
-
-When a new version is available:
-
-1. Use **End session** on the current Companion.
-2. Return to the Companion GitHub repository.
-3. Click **Code → Download ZIP**.
-4. Extract the new ZIP into a new folder.
-5. Run the correct launcher for your operating system.
-
-Do not copy the old `.venv` into the new download.
-
-Your saved Buganizer/Salesforce browser profile is stored separately, so updating the Companion normally does not erase your saved sign-in.
-
----
-
-# Troubleshooting
-
-## The map says the Companion is not running
-
-Start the correct launcher, wait for setup/sign-in to finish, then reload/retry the map.
-
-Check:
-
-```text
-http://127.0.0.1:8765/health
-```
-
----
-
-## "Address already in use" or port 8765 is busy
-
-Another Companion copy is probably already running.
-
-Do not start multiple copies.
-
-Find the existing MTV Companion window and use **End session**. If an abandoned process cannot be found, restart the computer and launch one clean copy.
-
----
-
-## Python is missing or too old
-
-You need Python 3.10 or newer.
-
-Windows:
-
-```cmd
-py --version
-```
-
-or:
-
-```cmd
-python --version
-```
-
-macOS/Linux/ChromeOS:
-
-```bash
-python3 --version
-```
-
----
-
-## macOS blocks `START_COMPANION.command`
-
-Try opening the launcher once, click **Done**, then go to:
-
-```text
-System Settings
-→ Privacy & Security
-→ Security
-→ Open Anyway
-```
-
-Approve the prompt and click **Open**.
-
----
-
-## macOS says you do not have appropriate access privileges
-
-From Terminal, enter the extracted Companion folder and run:
-
-```bash
-chmod +x START_COMPANION.command
-./START_COMPANION.command
-```
-
----
-
-## Buganizer or Salesforce does not show Connected
-
-Open the affected managed-browser tab.
-
-Make sure you are not still on:
-
-- a login page,
-- an MFA screen,
-- an access-denied page,
-- an Okta page,
-- a company/network error page.
-
-Complete authentication and wait for the actual application to load.
-
----
-
-## Playwright/Chromium fails on Linux or ChromeOS
-
-From the Companion folder run:
-
-```bash
-sudo .venv/bin/python -m playwright install-deps chromium
-.venv/bin/python -m playwright install chromium
-```
-
-Then restart the launcher.
 
 ---
 
