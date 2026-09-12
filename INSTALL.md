@@ -1,55 +1,67 @@
-# MTV MAP Companion — Beginner Installation Guide
+# MTV MAP Companion — Installation & First-Run Guide
 
-This guide is written for someone who has never installed or run the Companion before.
+This guide is for technicians who want to use the **MTV MAP Companion** with the MTV Robot Map.
 
-Follow the steps **in order**.
+You do **not** need to know Git, Python, or Playwright to use the Companion. Follow the section for your operating system and complete the steps in order.
 
 > **Important**
 >
-> 1. Download the complete Companion ZIP.
-> 2. **Extract the ZIP before running anything.**
-> 3. Use the launcher made for your operating system.
-> 4. Do not rename/delete random project files.
-> 5. Do not start multiple Companion copies.
-> 6. Complete Buganizer and Salesforce sign-in before using **Paperwork → Begin**.
+> - Download the Companion from the official repository:  
+>   **https://github.com/Tootooroo/Companion**
+> - **Extract / unzip the download before running anything.**
+> - Run the launcher for your operating system from the extracted folder.
+> - Keep the Companion's terminal / command window open while using Paperwork.
+> - Complete Buganizer and Salesforce sign-in when prompted.
+> - Do not move, rename, delete, or edit Companion files unless you know exactly what you are changing.
+> - Do not run two Companion copies at the same time.
 
 ---
 
-# Before you start
+# 1. How the download works
 
-You need:
-
-- a Windows, macOS, Linux, or supported ChromeOS computer,
-- permission to install/run Python,
-- internet/company-network access,
-- access to Buganizer,
-- access to Salesforce,
-- your normal Google / Okta / Salesforce login credentials,
-- the MTV MAP Companion ZIP.
-
-The Companion should run on the **same computer** where you use the MTV Robot Map.
-
----
-
-# Step 1 — Download and extract the ZIP
-
-Download the Companion ZIP to Downloads or another normal folder.
-
-## Do NOT run it from inside the ZIP
-
-You must extract it first.
-
-After extraction, the folder should contain files similar to:
+If the MTV Robot Map cannot find the Companion, the map's Companion link will take you to:
 
 ```text
-MTV_MAP_Companion/
+https://github.com/Tootooroo/Companion
+```
+
+On the GitHub page:
+
+1. Click the green **Code** button above the file list.
+2. Click **Download ZIP**.
+3. Wait for the ZIP file to finish downloading.
+4. Find the downloaded ZIP in your **Downloads** folder.
+5. Extract / unzip it.
+6. Open the extracted folder.
+
+GitHub normally names the extracted folder something similar to:
+
+```text
+Companion-main
+```
+
+That folder name is fine. You do not need to rename it.
+
+GitHub documents **Code → Download ZIP** as the normal way to download a repository without using Git.
+
+## Do not run files from inside the ZIP
+
+The Companion needs to create its own private Python environment and access files beside the launcher.
+
+If you are viewing the contents of a compressed ZIP without having extracted it first, stop and extract the ZIP.
+
+A normal extracted Companion folder should contain files similar to:
+
+```text
+Companion-main/
 ├── README.md
 ├── INSTALL.md
+├── bootstrap.py
 ├── companion.py
 ├── paperwork.py
+├── salesforce_routes.py
 ├── spine_browser.py
 ├── runtime_paths.py
-├── bootstrap.py
 ├── requirements.txt
 ├── START_COMPANION.bat
 ├── START_COMPANION.command
@@ -57,24 +69,20 @@ MTV_MAP_Companion/
 └── CHROMEOS_SETUP.sh
 ```
 
-If you only see a ZIP icon and are opening files without an extracted normal folder, stop and extract it first.
+You may also see additional project files. That is normal.
 
 ---
 
-# Which instructions should I use?
+# 2. Which launcher do I use?
 
-Use only the section for your computer:
+Use the launcher for your device:
 
-- **Windows 10/11** → `START_COMPANION.bat`
-- **macOS** → `START_COMPANION.command`
-- **Linux** → `START_COMPANION.sh`
-- **Chromebook / ChromeOS** → enable Linux first, then use `CHROMEOS_SETUP.sh`
-
----
-
-# Windows 10 / Windows 11
-
-## 1. Install Python
+| Device | Launcher |
+|---|---|
+| Windows 10 / 11 | `START_COMPANION.bat` |
+| macOS | `START_COMPANION.command` |
+| Linux desktop | `START_COMPANION.sh` |
+| Chromebook / ChromeOS | `CHROMEOS_SETUP.sh` once, then `START_COMPANION.sh` |
 
 The Companion requires:
 
@@ -82,278 +90,154 @@ The Companion requires:
 Python 3.10 or newer
 ```
 
-If you are not sure whether Python is installed:
-
-1. Press the Windows key.
-2. Type `cmd`.
-3. Open **Command Prompt**.
-4. Type:
-
-```cmd
-py --version
-```
-
-If that does not work, type:
-
-```cmd
-python --version
-```
-
-A good result looks like:
-
-```text
-Python 3.12.4
-```
-
-Any Python 3.10+ version is acceptable.
-
-### If Python is not installed
-
-Install Python 3 from the official Python installer or your company's approved software center.
-
-When using the standard Windows Python installer, enable:
-
-```text
-Add python.exe to PATH
-```
-
-Then finish the installation.
-
-Close and reopen Command Prompt after installing Python.
-
-Test again:
-
-```cmd
-py --version
-```
+The launcher handles the Companion's Python packages automatically after Python itself is available.
 
 ---
 
-## 2. Extract the Companion ZIP
+# 3. macOS installation
 
-In File Explorer:
+This section is important because macOS normally blocks a newly downloaded unsigned script the first time it is opened.
 
-1. Right-click the downloaded ZIP.
-2. Choose **Extract All...**
-3. Choose a normal location such as Documents or Downloads.
-4. Open the extracted folder.
+## Step 1 — Download and extract
 
-Do not double-click the launcher while still browsing inside the ZIP.
+1. Open:
+   `https://github.com/Tootooroo/Companion`
+2. Click **Code**.
+3. Click **Download ZIP**.
+4. Open your **Downloads** folder.
+5. Double-click the downloaded ZIP.
+6. Finder creates an extracted folder such as `Companion-main`.
+7. Open that extracted folder.
 
----
-
-## 3. Start the Companion
-
-Double-click:
-
-```text
-START_COMPANION.bat
-```
-
-A Command Prompt window should open.
-
-On first run it may display:
-
-```text
-First run: creating a private Python environment...
-```
-
-Then:
-
-```text
-Installing/updating Companion dependencies...
-```
-
-This is normal.
-
-Let it finish.
+Do not run `START_COMPANION.command` from inside the ZIP.
 
 ---
 
-## 4. If Windows shows a security warning
+## Step 2 — Check Python
 
-Your organization may show Windows SmartScreen or another security product.
-
-Only continue if:
-
-- you received the ZIP from the expected trusted project source,
-- the file name and folder are correct,
-- your company policy allows running it.
-
-If company policy blocks scripts/programs, do not bypass company security controls. Ask your administrator.
-
----
-
-## 5. First browser setup
-
-The Companion opens a managed Chrome/Chromium browser.
-
-You should see:
-
-- MTV Companion,
-- Buganizer,
-- Salesforce.
-
-If Buganizer requires login, sign in normally.
-
-If Salesforce opens Okta/login, sign in normally.
-
-Complete MFA if requested.
-
-The Companion status page should eventually show:
-
-```text
-Buganizer    Connected
-Salesforce   Connected
-```
-
-When both are connected, the managed browser minimizes automatically.
-
----
-
-## 6. Use the map
-
-Open the MTV Robot Map on this same Windows computer.
-
-Choose:
-
-```text
-Paperwork → Begin
-```
-
-The Paperwork window should open.
-
----
-
-# macOS
-
-## 1. Check Python
-
-Open **Terminal**.
-
-You can find Terminal in:
+Open **Terminal**:
 
 ```text
 Applications → Utilities → Terminal
 ```
 
-Type:
+Run:
 
 ```bash
 python3 --version
 ```
 
-A good result looks like:
+A good result looks similar to:
 
 ```text
 Python 3.12.4
 ```
 
-Python must be 3.10 or newer.
+Any version **3.10 or newer** is acceptable.
 
----
+### If Python is missing or too old
 
-## 2. Install Python if necessary
+Install a current Python 3 version using your company's approved software source or the official Python installer.
 
-If Terminal says:
+After installation:
 
-```text
-command not found: python3
-```
-
-or your Python is older than 3.10, install a current Python 3 release using:
-
-- your company's approved software center,
-- the official Python installer,
-- Homebrew if your organization uses it.
-
-After installation, close Terminal, reopen it, and run:
+1. Quit Terminal.
+2. Open Terminal again.
+3. Run:
 
 ```bash
 python3 --version
 ```
 
----
-
-## 3. Extract the ZIP
-
-Double-click the ZIP in Finder.
-
-Finder should create a normal folder.
-
-Open the extracted folder.
+Do not continue until the command reports Python 3.10 or newer.
 
 ---
 
-## 4. Start the Companion
+## Step 3 — First attempt to open the launcher
 
-Double-click:
+In Finder, double-click:
 
 ```text
 START_COMPANION.command
 ```
 
-A Terminal window should open and begin setup.
+Because this file came from the internet and is not an Apple-notarized application, macOS may block it on the first attempt.
+
+A common message is similar to:
+
+```text
+Apple cannot check "START_COMPANION.command" for malicious software.
+```
+
+The alert may offer **Done** or another dismissal button.
+
+If this happens:
+
+1. Click **Done**.
+2. Open the Apple menu.
+3. Open **System Settings**.
+4. Select **Privacy & Security**.
+5. Scroll down to the **Security** section.
+6. Look for a message saying `START_COMPANION.command` was blocked.
+7. Click **Open Anyway**.
+8. macOS may ask for your Mac password or Touch ID. Approve it.
+9. A confirmation warning appears again.
+10. Click **Open**.
+
+Apple documents this as the normal one-time process for allowing a trusted downloaded item that macOS has blocked.
+
+After you approve it once, macOS should remember the exception and later launches should normally work by double-clicking the file.
+
+> Only use **Open Anyway** when you intentionally downloaded the Companion from the expected repository and your company permits it. If the Mac is managed and your organization blocks the file, contact your administrator rather than bypassing company policy.
 
 ---
 
-## 5. If macOS says you do not have appropriate access privileges
+## Step 4 — If macOS says you do not have appropriate access privileges
 
-Open Terminal.
+If you see a message similar to:
 
-Type:
+```text
+The file "START_COMPANION.command" could not be executed because
+you do not have appropriate access privileges.
+```
+
+the launcher may have lost its executable permission.
+
+Open Terminal and type:
 
 ```bash
 cd 
 ```
 
-Do not press Enter yet.
+There is a space after `cd`.
 
-Drag the extracted `MTV_MAP_Companion` folder from Finder into the Terminal window.
+Do **not** press Enter yet.
 
-Terminal will insert the folder path.
+Drag the extracted `Companion-main` folder from Finder directly into the Terminal window. Terminal inserts the full path.
 
 Now press Enter.
 
-Then type:
+Then run:
 
 ```bash
 chmod +x START_COMPANION.command START_COMPANION.sh CHROMEOS_SETUP.sh
 ```
 
-Press Enter.
-
-Then start it:
+Then run:
 
 ```bash
 ./START_COMPANION.command
 ```
 
----
-
-## 6. If macOS says the file cannot be opened
-
-Control-click / right-click:
-
-```text
-START_COMPANION.command
-```
-
-Choose:
-
-```text
-Open
-```
-
-Then approve it if macOS offers the normal Open confirmation.
-
-If your company blocks unsigned scripts through device management, do not bypass company policy. Ask your administrator.
+After that, double-clicking `START_COMPANION.command` should also work.
 
 ---
 
-## 7. First-run package installation
+## Step 5 — First-run setup
 
-The Terminal may show:
+A Terminal window opens and the launcher starts `bootstrap.py`.
+
+On the first run you may see messages such as:
 
 ```text
 First run: creating a private Python environment...
@@ -365,52 +249,274 @@ and:
 Installing/updating Companion dependencies...
 ```
 
-Wait for it to finish.
+This is expected.
 
-You normally do not need to type anything.
+The Companion creates a private folder named:
+
+```text
+.venv
+```
+
+inside the extracted Companion folder.
+
+It then installs the packages listed in `requirements.txt`.
+
+You normally do **not** need to type pip commands yourself.
+
+If Google Chrome is not installed, the bootstrap can also install a private Playwright Chromium browser.
+
+The first startup can take longer than later startups because packages and a browser may need to be downloaded.
+
+Do not close the Terminal window while this is happening.
 
 ---
 
-## 8. First browser sign-in
+## Step 6 — Sign in to Buganizer and Salesforce
 
-A managed Chrome/Chromium browser opens.
+After setup, the Companion starts its managed browser.
 
-If Buganizer needs authentication, complete it.
+You should see tabs for:
 
-If Salesforce shows a login/Okta page, complete it.
+- **MTV Companion**
+- **Buganizer**
+- **Salesforce**
 
-Wait until the Companion page shows:
+If Buganizer asks you to sign in:
+
+1. Complete the normal Google/company sign-in.
+2. Complete MFA if required.
+3. Wait for Partner IssueTracker to load.
+
+If Salesforce opens a Salesforce / Okta login page:
+
+1. Complete the normal company sign-in.
+2. Complete MFA if required.
+3. Wait for the actual Salesforce Lightning page to load.
+
+The MTV Companion status page should eventually show:
 
 ```text
 Buganizer    Connected
 Salesforce   Connected
 ```
 
-When both are connected, the managed browser minimizes automatically.
+The managed browser minimizes only after both services are connected.
 
 ---
 
-## 9. Use the map
+## Step 7 — Use the map
 
-Open the MTV Robot Map on the same Mac.
+Open the MTV Robot Map on the **same Mac**.
 
-Choose:
+Select a robot and choose:
 
 ```text
 Paperwork → Begin
 ```
 
+The local Paperwork window should open.
+
+Keep the Companion running while using Paperwork.
+
+When completely finished, restore the managed Companion browser and click:
+
+```text
+End session
+```
+
+Use **End session** instead of manually killing the Python process whenever possible.
+
 ---
 
-# Linux
+# 4. Windows 10 / Windows 11 installation
 
-The following examples use Debian/Ubuntu commands.
+## Step 1 — Download and extract
 
-Other Linux distributions may use different package-manager commands.
+1. Open:
+   `https://github.com/Tootooroo/Companion`
+2. Click **Code**.
+3. Click **Download ZIP**.
+4. Open your **Downloads** folder.
+5. Right-click the downloaded ZIP.
+6. Choose **Extract All...**
+7. Choose a normal folder such as Downloads or Documents.
+8. Click **Extract**.
+9. Open the extracted `Companion-main` folder.
 
-## 1. Install Python and venv support
+Do not run the launcher from inside the ZIP preview.
 
-Open a terminal and run:
+---
+
+## Step 2 — Check Python
+
+Press the Windows key, type:
+
+```text
+cmd
+```
+
+and open **Command Prompt**.
+
+Run:
+
+```cmd
+py --version
+```
+
+If that does not work, try:
+
+```cmd
+python --version
+```
+
+You need Python 3.10 or newer.
+
+Example:
+
+```text
+Python 3.12.4
+```
+
+### If Python is missing
+
+Install a current Python 3 version from your company's approved software source or the official Python installer.
+
+If you use the standard Python installer, enable:
+
+```text
+Add python.exe to PATH
+```
+
+during installation.
+
+After Python installs:
+
+1. Close Command Prompt.
+2. Open it again.
+3. Run:
+
+```cmd
+py --version
+```
+
+or:
+
+```cmd
+python --version
+```
+
+---
+
+## Step 3 — Run the Companion
+
+In the extracted Companion folder, double-click:
+
+```text
+START_COMPANION.bat
+```
+
+A Command Prompt window opens.
+
+The launcher automatically looks for `py` first and then `python`.
+
+On first run it may show:
+
+```text
+First run: creating a private Python environment...
+```
+
+and:
+
+```text
+Installing/updating Companion dependencies...
+```
+
+Wait for setup to finish.
+
+---
+
+## Step 4 — Windows security warnings
+
+Windows or your company's security software may warn about a downloaded script.
+
+If Windows SmartScreen displays **Windows protected your PC**, and you have confirmed that the files came from the expected `Tootooroo/Companion` repository and your organization allows them, Windows may provide **More info → Run anyway**.
+
+If your company blocks the script or your account does not have permission to run it, contact your administrator. Do not disable company security software.
+
+---
+
+## Step 5 — Sign in
+
+The managed browser opens MTV Companion, Buganizer, and Salesforce.
+
+Complete any Buganizer / Google and Salesforce / Okta sign-ins.
+
+Wait until:
+
+```text
+Buganizer    Connected
+Salesforce   Connected
+```
+
+Then the managed browser minimizes.
+
+---
+
+## Step 6 — Use the map
+
+Open the MTV Robot Map on the same Windows computer and choose:
+
+```text
+Paperwork → Begin
+```
+
+Keep the Command Prompt / Companion process running.
+
+When completely finished, use **End session** in the managed MTV Companion page.
+
+---
+
+# 5. Linux desktop installation
+
+The commands below are written for Debian / Ubuntu based systems.
+
+Other distributions may use a different package manager.
+
+## Step 1 — Download and extract
+
+Download the repository using:
+
+```text
+Code → Download ZIP
+```
+
+from:
+
+```text
+https://github.com/Tootooroo/Companion
+```
+
+Extract the ZIP.
+
+If you prefer the terminal and the downloaded ZIP is in the current directory, you can use:
+
+```bash
+unzip Companion-main.zip
+```
+
+The exact ZIP name may be different. Using your graphical file manager is completely fine.
+
+Enter the extracted folder, for example:
+
+```bash
+cd Companion-main
+```
+
+---
+
+## Step 2 — Install Python support
+
+Run:
 
 ```bash
 sudo apt update
@@ -431,59 +537,51 @@ Y
 
 and press Enter.
 
-If `sudo` asks for your password, type your computer password and press Enter.
+If `sudo` asks for your password, type the password for your computer account and press Enter.
 
-**The password may not appear on screen while you type. This is normal.**
+Linux normally does not display password characters while you type. That is normal.
+
+Check Python:
+
+```bash
+python3 --version
+```
+
+It must be Python 3.10 or newer.
 
 ---
 
-## 2. Extract the ZIP
+## Step 3 — Make the launcher executable
 
-Extract it using your file manager or:
-
-```bash
-unzip MTV_MAP_Companion_cross_platform_v3.6.zip
-```
-
-Then enter the folder:
-
-```bash
-cd MTV_MAP_Companion
-```
-
----
-
-## 3. Give the launcher permission to run
-
-Type:
+From inside the extracted Companion folder, run:
 
 ```bash
 chmod +x START_COMPANION.sh
 ```
 
----
-
-## 4. Start the Companion
-
-Type:
+Then launch:
 
 ```bash
 ./START_COMPANION.sh
 ```
 
-The first run creates `.venv` and installs Python dependencies.
-
 ---
 
-## 5. If Playwright says Linux system libraries are missing
+## Step 4 — First-run setup
 
-From inside the Companion folder, run:
+The launcher runs `bootstrap.py`.
+
+It automatically creates `.venv` and installs the Companion's Python requirements.
+
+If Chrome / Chromium is unavailable, it attempts to install Playwright Chromium.
+
+If Playwright reports that Linux system libraries are missing, run from the Companion folder:
 
 ```bash
 sudo .venv/bin/python -m playwright install-deps chromium
 ```
 
-Then:
+Then run:
 
 ```bash
 .venv/bin/python -m playwright install chromium
@@ -495,23 +593,37 @@ Then restart:
 ./START_COMPANION.sh
 ```
 
-If the first command asks for your password, enter your computer password and press Enter.
+---
+
+## Step 5 — Sign in and use Paperwork
+
+Complete Buganizer and Salesforce authentication in the managed browser.
+
+Wait for both indicators to say **Connected**.
+
+Then open the MTV Robot Map on the same computer and choose:
+
+```text
+Paperwork → Begin
+```
+
+When completely finished, use **End session**.
 
 ---
 
-# ChromeOS / Chromebook
+# 6. Chromebook / ChromeOS installation
 
-The Companion does not run as a normal ChromeOS browser extension or web page.
+The Companion is a Python + Playwright desktop helper. It does **not** run directly as a normal ChromeOS web page.
 
-It requires the ChromeOS **Linux development environment (Crostini)**.
+ChromeOS requires the **Linux development environment (Crostini)**.
 
-If your Chromebook is managed and Linux is disabled by your organization, you cannot install this version without administrator approval.
+If the Chromebook is company-managed and Linux is disabled, an administrator must enable/approve it.
 
 ---
 
-## 1. Enable Linux
+## Step 1 — Enable Linux
 
-Open ChromeOS Settings.
+Open ChromeOS **Settings**.
 
 Go to:
 
@@ -519,43 +631,51 @@ Go to:
 Developers → Linux development environment
 ```
 
-Enable Linux.
-
-Wait for ChromeOS to complete setup.
+Enable Linux and complete the ChromeOS setup.
 
 ---
 
-## 2. Put the Companion in Linux files
+## Step 2 — Download and extract the Companion
 
-Download and extract the ZIP.
+Open:
 
-Move/copy the extracted Companion folder into:
+```text
+https://github.com/Tootooroo/Companion
+```
+
+Choose:
+
+```text
+Code → Download ZIP
+```
+
+Extract the ZIP.
+
+Move the extracted `Companion-main` folder into:
 
 ```text
 Linux files
 ```
 
-This avoids path and permission problems between ChromeOS storage and the Linux container.
+Keeping the Companion in Linux files avoids path and permission issues between normal ChromeOS storage and the Linux container.
 
 ---
 
-## 3. Open the Linux Terminal
+## Step 3 — Open the Linux Terminal
 
-Use the ChromeOS Terminal app.
+Open the ChromeOS **Terminal** application.
 
-Enter the Companion folder.
-
-For example:
+Enter the Companion directory, for example:
 
 ```bash
-cd MTV_MAP_Companion
+cd Companion-main
 ```
 
-If your folder is somewhere else, use the correct path.
+If the folder has a different name or location, use that path instead.
 
 ---
 
-## 4. Make the scripts executable
+## Step 4 — Make the scripts executable
 
 Run:
 
@@ -565,7 +685,7 @@ chmod +x CHROMEOS_SETUP.sh START_COMPANION.sh
 
 ---
 
-## 5. Run the one-time ChromeOS setup
+## Step 5 — Run the one-time ChromeOS setup
 
 Run:
 
@@ -573,17 +693,17 @@ Run:
 ./CHROMEOS_SETUP.sh
 ```
 
-The script installs:
+This script uses the Linux package manager to install:
 
-- Python,
-- Python venv,
+- Python 3,
+- Python virtual-environment support,
 - pip,
-- required Playwright Linux libraries,
-- Chromium if required.
+- Playwright system dependencies,
+- Chromium when required.
 
-It uses `sudo`.
+The script may display `sudo` commands and package-installation messages.
 
-### If asked:
+If asked:
 
 ```text
 Do you want to continue? [Y/n]
@@ -597,138 +717,112 @@ Y
 
 and press Enter.
 
-### If asked for a password
+If asked for a Linux password, enter it and press Enter. The password may not appear while you type.
 
-Enter the Linux/container password if one has been configured.
-
-Nothing may appear while typing. That is normal.
+Wait until the script says setup is complete.
 
 ---
 
-## 6. Start the Companion after setup
+## Step 6 — Start the Companion
 
-Run:
+After the one-time setup, run:
 
 ```bash
 ./START_COMPANION.sh
 ```
 
-For later sessions, you normally only need:
+For future sessions, you normally only need:
 
 ```bash
 ./START_COMPANION.sh
 ```
 
-You do not need to run `CHROMEOS_SETUP.sh` every time.
+You do **not** need to rerun `CHROMEOS_SETUP.sh` every time.
+
+Complete Buganizer and Salesforce sign-in, wait for both to show **Connected**, then use **Paperwork → Begin** from the map.
 
 ---
 
-# What happens during first run?
+# 7. What the launcher installs automatically
 
-The launcher runs `bootstrap.py`.
-
-It automatically:
-
-1. checks Python version,
-2. creates:
-
-```text
-.venv
-```
-
-3. installs packages from:
-
-```text
-requirements.txt
-```
-
-4. checks for Chrome/Chromium,
-5. installs Playwright Chromium when required,
-6. starts the Companion.
-
-The first run can take longer than later runs because packages/browser files may need to be downloaded.
-
-Later runs reuse the existing environment.
-
----
-
-# What should I type if the Companion asks to install something?
-
-Normally the bootstrap installs requirements without asking.
-
-However, if you see:
-
-```text
-Playwright is required but not installed. Install it now? [y/N]:
-```
-
-type:
-
-```text
-y
-```
-
-then press Enter.
-
-If you see a browser prompt similar to:
-
-```text
-A compatible browser is required. Install Playwright Chromium now? [y/N]:
-```
-
-type:
-
-```text
-y
-```
-
-then press Enter.
-
-If installation fails on Linux/ChromeOS because of missing libraries, use:
-
-```bash
-sudo .venv/bin/python -m playwright install-deps chromium
-```
-
-then:
-
-```bash
-.venv/bin/python -m playwright install chromium
-```
-
-then start the Companion again.
-
----
-
-# Do I need to run pip manually?
-
-Usually, **no**.
-
-Do not manually install random versions of Playwright.
-
-The launcher runs:
+The launchers call:
 
 ```text
 bootstrap.py
 ```
 
-which installs the dependencies specified by the project.
+The bootstrap:
 
-Only use manual pip/Playwright commands when troubleshooting a specific installation error.
+1. verifies that Python is at least version 3.10,
+2. creates a private `.venv`,
+3. installs packages from `requirements.txt`,
+4. checks for a usable Chrome / Chromium browser,
+5. installs Playwright Chromium if necessary,
+6. starts `companion.py`.
+
+You normally should **not** run `pip install` yourself.
+
+You normally should **not** edit `.venv`.
 
 ---
 
-# First startup and sign-in
+# 8. If the terminal asks whether it may install a package/browser
 
-Every startup verifies authentication.
+The current bootstrap normally installs requirements automatically.
 
-The managed browser opens:
+Some lower-level recovery paths may still display prompts similar to:
 
-1. MTV Companion control page,
-2. Buganizer,
-3. Salesforce.
+```text
+Playwright is required but not installed. Install it now? [y/N]:
+```
 
-The control page shows separate indicators.
+If you intentionally downloaded the Companion from the official repository and want setup to continue, type:
+
+```text
+y
+```
+
+and press Enter.
+
+You may also see:
+
+```text
+A compatible browser is required. Install Playwright Chromium now? [y/N]:
+```
+
+Type:
+
+```text
+y
+```
+
+and press Enter.
+
+If Linux / ChromeOS reports missing browser system libraries, use:
+
+```bash
+sudo .venv/bin/python -m playwright install-deps chromium
+```
+
+followed by:
+
+```bash
+.venv/bin/python -m playwright install chromium
+```
+
+Then start the launcher again.
+
+---
+
+# 9. Normal startup behavior
+
+Every time the Companion starts, it checks Buganizer and Salesforce authentication.
+
+The managed browser contains:
+
+- the MTV Companion control page,
+- Buganizer,
+- Salesforce.
 
 Possible states include:
 
@@ -744,217 +838,188 @@ Buganizer    Connected
 Salesforce   Connected
 ```
 
-The Companion should **not minimize while a required sign-in is incomplete**.
+If a sign-in is needed, the browser remains visible.
 
-If Salesforce opens an Okta/login screen:
+Once both are connected, the browser minimizes automatically.
 
-1. complete the login,
-2. complete MFA if requested,
-3. wait for the actual Salesforce Lightning interface,
-4. wait for the Companion indicator to become Connected.
-
-When both services are Connected, the browser minimizes automatically.
+The login session is stored in a persistent local browser profile, so users normally do not need to log in from scratch every launch. Company SSO, Okta, or Salesforce policies can still expire a session and require authentication again.
 
 ---
 
-# If the Companion says Connected but the website is not usable
+# 10. Verify that the Companion is running
 
-Do not immediately click Begin repeatedly.
-
-Try:
-
-1. restore the managed browser,
-2. open the Buganizer tab,
-3. verify the actual IssueTracker page loads,
-4. open the Salesforce tab,
-5. verify the actual Salesforce Lightning page loads,
-6. refresh the affected website once if needed,
-7. restart the Companion if the state does not recover.
-
-If this happens repeatedly, report it as a Companion authentication-detection issue.
-
----
-
-# Using Paperwork
-
-After both startup indicators are Connected:
-
-1. Open the MTV Robot Map on the same computer.
-2. Click a robot.
-3. Choose:
-
-```text
-Paperwork → Begin
-```
-
-4. The local Paperwork window opens.
-5. Wait for Buganizer and Salesforce to show Ready.
-6. Choose Claim, Reassign, or Exit.
-
-## Reassign workflow
-
-Reassign now completes both backend systems.
-
-1. Choose **Reassign**.
-2. Choose the destination team.
-3. Enter optional **Details**.
-4. Press **Commit**.
-5. Wait while Buganizer saves the comment/assignee.
-6. The Paperwork window changes to the **Salesforce** step.
-7. Choose the route options shown for that team. Only choices that cannot be known automatically are shown.
-8. Press **Complete Salesforce**.
-9. The Companion assigns the Salesforce Case to the current Salesforce user, saves the same Details into Salesforce Case Feed when supplied, fills the routed fields, saves them, and closes the Case.
-10. Wait for the final **Reassigned** completion screen before exiting.
-
-Do **not** click Commit repeatedly while a button says **Working…**.
-
-If the Salesforce step reports an error after Buganizer has already succeeded, stay on the Salesforce step and read the error before retrying. The Companion tracks successful Salesforce steps during the current session so a retry does not intentionally repeat them.
-
-## Claim workflow
-
-Claim remains the existing Buganizer workflow in this release. Salesforce Claim automation is not part of v3.11 yet.
-
----
-
-# Exit vs End session
-
-These buttons do different things.
-
-## Exit
-
-The **Exit** button in the Paperwork Begin window:
-
-- ends the current robot paperwork workspace,
-- returns the Companion to idle,
-- keeps the Companion running.
-
-Use Exit when you are finished with one robot but may work on another.
-
-## End session
-
-**End session** is on the MTV Companion control page inside the managed browser.
-
-It:
-
-- stops the local Companion,
-- closes the managed browser,
-- closes an open Begin/Paperwork window,
-- releases port `8765`,
-- closes the launcher Terminal window on macOS when possible.
-
-Use End session when you are completely finished.
-
----
-
-# Verify that the Companion is running
-
-Open this in a browser on the same computer:
+While the Companion is running, open this address in a browser on the same computer:
 
 ```text
 http://127.0.0.1:8765/health
 ```
 
-You should receive JSON containing:
+A working Companion returns JSON containing:
 
 ```json
 {"ok": true}
 ```
 
-If the page does not load, the Companion is not currently serving on that computer.
+If the page does not load, the local Companion is not currently serving on that computer.
 
 ---
 
-# Common problems
+# 11. Exit vs End session
+
+These are intentionally different.
+
+## Exit
+
+The **Exit** button in the Paperwork window ends only the current robot paperwork workspace.
+
+The Companion stays running so another robot can be opened later.
+
+## End session
+
+The **End session** button is on the MTV Companion control page in the managed browser.
+
+Use it when you are completely finished.
+
+It shuts down the local Companion and closes its managed browser resources.
+
+On macOS, the launcher also attempts to close the Terminal window that launched the Companion after a clean shutdown.
+
+---
+
+# 12. Updating to a newer Companion version
+
+When the GitHub repository is updated:
+
+1. Use **End session** on the currently running Companion.
+2. Return to:
+   `https://github.com/Tootooroo/Companion`
+3. Click **Code → Download ZIP**.
+4. Extract the new ZIP into a new folder.
+5. Run the correct launcher again.
+
+Do not copy the old `.venv` folder into the new download.
+
+The Companion's persistent browser profile is stored separately from the repository folder, so normal source updates should not require you to sign in again unless the authentication session itself has expired.
+
+---
+
+# 13. Common problems
 
 ## "Companion is not running"
 
-Start the Companion using the correct launcher.
-
-Then test:
+Start the launcher for your operating system, then test:
 
 ```text
 http://127.0.0.1:8765/health
 ```
 
-If that does not load, check the terminal for an error.
+---
+
+## "Address already in use" / port 8765
+
+Another Companion process is probably already running.
+
+Do not start multiple copies.
+
+Find the existing MTV Companion managed browser and use **End session**.
+
+If an old process was left behind and cannot be found, restarting the computer is a simple way to clear it.
 
 ---
 
-## "Address already in use" / port 8765 is busy
-
-Another Companion copy may already be running.
-
-Do not open several copies.
-
-Find the existing managed Companion browser and use:
-
-```text
-End session
-```
-
-Then start one new copy.
-
-If you cannot find it, restart the computer as a simple last-resort way to clear an orphan local process.
-
----
-
-## Python is too old
-
-Check:
+## Python is missing
 
 ### Windows
+
+Try:
 
 ```cmd
 py --version
 ```
 
-### macOS/Linux/ChromeOS
+or:
+
+```cmd
+python --version
+```
+
+### macOS / Linux / ChromeOS
+
+Run:
 
 ```bash
 python3 --version
 ```
 
-Install Python 3.10 or newer.
+Install Python 3.10 or newer if necessary.
 
 ---
 
 ## `.venv` cannot be created
 
-Possible causes:
+Common causes:
 
-- running from inside the ZIP,
-- folder is read-only,
+- the ZIP was not extracted,
+- the folder is read-only,
 - Python venv support is missing,
-- antivirus/security policy blocks script execution.
+- company security policy blocked the process.
 
-Fix the cause, then run the launcher again.
-
-On Debian/Ubuntu:
+On Debian / Ubuntu:
 
 ```bash
 sudo apt install python3-venv
 ```
 
+Then rerun the launcher.
+
 ---
 
-## Playwright / Chromium download failed
+## Playwright / Chromium installation failed
 
-Check internet/proxy access.
+First, retry the launcher.
 
-Run the launcher again.
-
-On Linux/ChromeOS, if the message says system dependencies are missing:
+On Linux / ChromeOS, if the error specifically mentions missing system dependencies:
 
 ```bash
 sudo .venv/bin/python -m playwright install-deps chromium
+```
+
+then:
+
+```bash
 .venv/bin/python -m playwright install chromium
 ```
 
+Then start the Companion again.
+
 ---
 
-## macOS launcher says "appropriate access privileges"
+## macOS says Apple cannot check the launcher
 
-From Terminal, enter the Companion folder and run:
+First attempt to open:
+
+```text
+START_COMPANION.command
+```
+
+Then:
+
+```text
+System Settings
+→ Privacy & Security
+→ Security
+→ Open Anyway
+```
+
+Approve the authentication prompt, then click **Open** on the confirmation warning.
+
+This is normally needed only for the first approved launch of that downloaded copy.
+
+---
+
+## macOS says "appropriate access privileges"
+
+From Terminal, enter the extracted Companion folder and run:
 
 ```bash
 chmod +x START_COMPANION.command
@@ -968,145 +1033,67 @@ Then:
 
 ---
 
-## Salesforce keeps opening the login page
+## Salesforce keeps opening a login page
 
-This normally means the Salesforce session is not currently valid.
+Complete the Salesforce / Okta login normally and wait for the Salesforce Lightning application to load.
 
-Complete login/Okta/MFA and wait until the actual Lightning page loads.
+If it happens every launch, your company security policy may be expiring or clearing the session.
 
-If it happens every single launch:
-
-1. confirm the Companion is using the same local user account,
-2. do not delete the Companion browser profile,
-3. confirm browser/security policy is not clearing cookies on exit,
-4. confirm Salesforce/Okta policy allows the session to persist,
-5. report it if authentication succeeds but the Companion never changes to Connected.
+Do not delete the Companion browser profile as a first troubleshooting step.
 
 ---
 
-## Buganizer opens but does not show Connected
+## Buganizer or Salesforce does not become Connected
 
-Wait until the actual Partner IssueTracker `/issues` application loads.
+Open the affected managed-browser tab and make sure the actual application is loaded, not:
 
-If you are on a login/access-denied page, sign in or resolve access first.
+- a login page,
+- an access denied page,
+- an MFA screen,
+- a company error page.
 
----
-
-## Begin opens but Salesforce cannot find the Case
-
-Make sure Salesforce is fully authenticated and the Case actually exists/is visible to your account.
-
-The Companion searches Salesforce using the 9-digit Buganizer ID.
-
-If Salesforce UI/search behavior has changed, the automation selector may need an update.
+The Companion cannot bypass account permissions, SSO, VPN, or company network requirements.
 
 ---
 
-# Things you should NOT do
+# 14. Things that can break the Companion
 
-To avoid breaking the installation:
+Avoid the following:
 
-- Do not run directly from inside the ZIP.
-- Do not delete project Python files.
-- Do not rename launcher files unless you also understand the scripts.
-- Do not change port `8765`.
-- Do not change endpoint names.
-- Do not edit `requirements.txt` casually.
-- Do not manually upgrade Playwright just because a newer version exists.
-- Do not distribute `.venv`.
-- Do not distribute browser profiles.
-- Do not share cookies/tokens.
-- Do not start two Companion copies.
-- Do not repeatedly press Commit after a timeout without checking the actual Buganizer issue.
-- Do not delete the browser profile unless you intentionally want to sign in again.
-- Do not bypass your organization's security policy.
+- running files before extracting the ZIP,
+- deleting Python source files,
+- renaming launchers or project files,
+- editing `requirements.txt` without testing,
+- changing port `8765`,
+- starting two Companion copies,
+- deleting `.venv` while the Companion is running,
+- deleting the persistent browser profile unless intentionally resetting authentication,
+- manually changing Buganizer or Salesforce tabs while automation is actively working,
+- repeatedly clicking Commit while the UI says **Working...**,
+- closing the terminal / command window while the Companion is running,
+- bypassing organization-managed security restrictions.
 
----
-
-# What can legitimately cause the Companion to stop working?
-
-Even if the local code has not changed, these external changes can affect it:
-
-- Buganizer page layout changes,
-- Salesforce Lightning layout changes,
-- Google/Okta authentication changes,
-- company VPN/network policy,
-- expired login,
-- account permission changes,
-- Chrome updates,
-- operating-system security updates,
-- Playwright/browser compatibility changes,
-- port `8765` being used by another process.
-
-If something suddenly breaks after previously working, capture:
-
-1. the terminal error,
-2. the Companion status page,
-3. the Buganizer/Salesforce page being shown,
-4. what action was clicked,
-5. operating system.
-
-That information makes troubleshooting much faster.
+Buganizer, Salesforce, Google authentication, Okta, browser versions, and company network policies are external systems. Changes to those systems can occasionally require the Companion automation to be updated.
 
 ---
 
-# Updating to a new release
+# 15. What to collect if you need help
 
-1. Use **End session**.
-2. Download the new release ZIP.
-3. Extract it into a fresh folder.
-4. Run the platform launcher again.
+If setup or Paperwork fails, collect:
 
-Do not copy `.venv` from an old release unless you specifically know why.
+1. your operating system,
+2. your Python version,
+3. the exact terminal / command-window error,
+4. whether `http://127.0.0.1:8765/health` loads,
+5. whether Buganizer shows Connected,
+6. whether Salesforce shows Connected,
+7. a screenshot of the page where the workflow stopped.
 
-The persistent authentication profile is stored separately, so a normal source-package update should not require deleting the login profile.
+Do **not** send:
 
----
+- passwords,
+- MFA codes,
+- cookies,
+- authentication tokens,
+- private credentials.
 
-# Resetting the installation
-
-Only use these steps when troubleshooting.
-
-## Reset Python environment only
-
-End the Companion.
-
-Delete:
-
-```text
-.venv
-```
-
-from the extracted Companion folder.
-
-Run the launcher again.
-
-The bootstrap recreates it.
-
-This should not delete saved Buganizer/Salesforce login.
-
-## Reset browser login/profile
-
-This signs the user out.
-
-Only do this if you intentionally want a clean browser session.
-
-Profile locations are documented in `README.md`.
-
-After removing the profile, start the Companion and sign into both services again.
-
----
-
-# Need help?
-
-Before asking for help, collect:
-
-- operating system,
-- Python version,
-- exact error text from the terminal,
-- whether `/health` loads,
-- Buganizer indicator state,
-- Salesforce indicator state,
-- screenshot of the page where it stopped.
-
-Do not send passwords, MFA codes, cookies, tokens, or other credentials.
