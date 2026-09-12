@@ -42,7 +42,6 @@ Companion-main
 
 That folder name is fine. You do not need to rename it.
 
-GitHub documents **Code → Download ZIP** as the normal way to download a repository without using Git.
 
 ## Do not run files from inside the ZIP
 
