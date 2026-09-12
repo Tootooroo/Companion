@@ -27,9 +27,7 @@ When the Companion starts, it:
 7. Minimizes the managed browser once both services are connected.
 8. Waits for **Paperwork → Begin** from the MTV Robot Map.
 
-When Begin is clicked, the map sends the selected robot and bug information to the local Companion and opens the **MTV Paperwork** window.
-
-The Companion then opens the exact Buganizer issue and matching Salesforce Case and prepares the Paperwork workflow.
+When Begin is clicked, the Companion opens the exact Buganizer issue and matching Salesforce Case and prepares the Paperwork workflow.
 
 ---
 
@@ -40,89 +38,6 @@ The Paperwork window provides:
 - **Claim**
 - **Reassign**
 - **Exit**
-
-## Claim
-
-Claim is currently a Buganizer-only workflow.
-
-It:
-
-- assigns the Buganizer issue to `robotics-support@google.com`;
-- posts the optional **Details** text as a Buganizer comment;
-- verifies the Buganizer changes.
-
-Salesforce Claim automation is intentionally separate and is not part of the current Claim flow.
-
----
-
-## Reassign
-
-Reassign automates both Buganizer and Salesforce.
-
-### Stage 1 — Buganizer
-
-The user:
-
-1. Clicks **Reassign**.
-2. Selects a team.
-3. Confirms the Buganizer assignee.
-4. Enters optional **Details**.
-5. Clicks **Commit**.
-
-The Companion then:
-
-1. posts the Details to Buganizer when supplied;
-2. changes the Buganizer assignee;
-3. verifies the saved Buganizer result.
-
-Only after Buganizer succeeds does the workflow advance to Salesforce.
-
-### Stage 2 — Salesforce
-
-The Paperwork window changes to the Salesforce step and asks only for route choices that cannot be determined automatically.
-
-Before making **any Salesforce changes**, the Companion waits for the Buganizer-to-Salesforce backend synchronization.
-
-The Salesforce Case must reach:
-
-```text
-Customer Responded
-```
-
-before the Companion changes the Case.
-
-The wait is state-driven rather than a fixed delay. The Companion checks Salesforce immediately and continues as soon as the correct status appears.
-
-After synchronization, the Companion:
-
-1. verifies the exact Salesforce Case;
-2. opens the Case **Details** tab;
-3. checks the current Case Owner;
-4. skips ownership changes when the correct user already owns the Case;
-5. otherwise assigns the Case to the currently authenticated Salesforce user;
-6. handles multiple Change Owner results by identifying the logged-in Salesforce user instead of blindly selecting the first result;
-7. opens the Case **Feed**;
-8. posts the same Details text used in Buganizer, when Details were supplied;
-9. skips the Feed post when the exact Details are already present;
-10. returns to **Details**;
-11. checks the routed Salesforce fields;
-12. changes only fields that are not already correct;
-13. saves and verifies the routed fields;
-14. checks the Case Status;
-15. skips the close action if the Case is already Closed;
-16. otherwise sets Status to **Closed**, saves, and verifies the result.
-
-The workflow is designed to be retry-safe. If Salesforce fails after Buganizer already succeeded, retrying the Salesforce step does not intentionally repeat the Buganizer mutation. Salesforce operations also check the live Case before changing values that may already be correct.
-
----
-
-# Salesforce Reassign routes
-
-The route definitions are stored in:
-
-```text
-salesforce_routes.py
-```
 
 # Companion interfaces
 
@@ -176,144 +91,14 @@ Run the platform launcher again the next time the Companion is needed.
 
 ---
 
-# Code structure
-
-## `bootstrap.py`
-
-First-run installer and normal launcher helper.
-
-It:
-
-- requires Python 3.10 or newer;
-- creates `.venv`;
-- installs packages from `requirements.txt`;
-- tracks the requirements fingerprint;
-- detects Google Chrome/Chromium;
-- installs Playwright Chromium when necessary;
-- starts `companion.py`.
-
-Normal users should not need to install Python packages manually.
-
-## `companion.py`
-
-Main Companion application.
-
-It owns:
-
-- the localhost HTTP server;
-- `/health`;
-- `/launch`;
-- startup/authentication state;
-- the MTV Companion control page;
-- the MTV Paperwork UI;
-- Paperwork session state;
-- Claim/Reassign actions;
-- the Buganizer → Salesforce synchronization barrier;
-- End session;
-- browser/window coordination;
-- the dedicated Playwright browser-worker queue.
-
-Playwright browser operations are serialized through one worker so browser mutations do not run concurrently.
-
-## `paperwork.py`
-
-Browser automation for Buganizer and Salesforce.
-
-It contains logic for:
-
-- opening exact Buganizer issues;
-- posting Buganizer comments;
-- changing Buganizer assignees;
-- opening/searching exact Salesforce Cases;
-- reading Salesforce Case Status;
-- waiting for `Customer Responded`;
-- checking/changing Salesforce Case Owner;
-- identifying the authenticated Salesforce user;
-- posting Details to the Salesforce Feed;
-- checking/updating routed Case fields;
-- setting and verifying Status `Closed`.
-
-These automations depend on the controls exposed by Buganizer and Salesforce. Significant website UI changes can require selector updates.
-
-## `salesforce_routes.py`
-
-Contains the approved Salesforce field mappings for each Reassign route.
-
-Keeping the routing data separate from browser automation makes route changes easier to review and test.
-
-## `spine_browser.py`
-
-The module name is historical. In the Companion it acts as the persistent Playwright browser manager.
-
-It:
-
-- starts Playwright;
-- prefers installed Google Chrome;
-- falls back to Playwright Chromium;
-- creates a persistent browser context;
-- preserves authentication state between launches;
-- exposes browser pages to the Companion worker.
-
-## `runtime_paths.py`
-
-Chooses the per-user location for the persistent browser profile.
-
-Typical locations:
-
-### macOS
-
-```text
-~/Library/Application Support/MTV_MAP_Companion/browser-profile
-```
-
-### Windows
-
-```text
-%LOCALAPPDATA%\MTV_MAP_Companion\browser-profile
-```
-
-### Linux / ChromeOS Linux
-
-```text
-~/.local/share/MTV_MAP_Companion/browser-profile
-```
-
-Deleting this profile normally requires the user to sign into Buganizer and Salesforce again.
-
-## `requirements.txt`
-
-Defines the Python dependency constraints used by the bootstrap.
-
-Do not change dependency versions without testing the Companion against them.
-
-## Launchers
-
-| File | Platform |
-|---|---|
-| `START_COMPANION.command` | macOS |
-| `START_COMPANION.bat` | Windows |
-| `START_COMPANION.sh` | Linux |
-| `CHROMEOS_SETUP.sh` | ChromeOS Linux one-time setup |
-
-## `status_display.py`
-
-Terminal status-display helper retained for related command-line workflows.
-
-## `window_layout.py`
-
-Best-effort window placement support, primarily for Linux/X11. The map and `companion.py` also coordinate the main Paperwork split-screen geometry.
-
----
-
 # Browser and authentication
 
 The Companion uses a persistent local browser profile.
 
 This means:
 
-- every technician signs in with their own approved account;
+- every person signs in with their own approved account;
 - login state can survive Companion restarts;
-- the GitHub repository does not contain a technician's authenticated browser session;
 - sending/downloading the source does not send another user's cookies or passwords.
 
 The user must already have legitimate access to:
@@ -350,7 +135,7 @@ The Companion is intentionally local.
 - Do not add passwords, cookies, tokens, or credentials to the repository.
 - Do not commit `.venv`.
 - Do not commit generated browser profiles.
-- Each technician must authenticate using their own approved account.
+- Each person must authenticate using their own approved account.
 
 Files/folders that should not be committed or distributed include:
 
