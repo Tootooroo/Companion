@@ -5,7 +5,7 @@ import re
 import time
 from typing import Any
 
-from spine_browser import SpineBrowser
+from browser_manager import BrowserManager
 from status_display import set_status
 
 
@@ -549,7 +549,7 @@ def reassign_buganizer_issue(page: Any, bug_number: str) -> bool:
 
 def open_paperwork_records(
     bug_number: str,
-    browser_factory: Callable[[], Any] = SpineBrowser,
+    browser_factory: Callable[[], Any] = BrowserManager,
 ) -> None:
     """Open Buganizer and the first matching Salesforce Cases result."""
     issue_url = buganizer_url(bug_number)
