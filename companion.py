@@ -28,7 +28,6 @@ from paperwork import (
     reassign_buganizer_issue,
     reassign_buganizer_issue_to,
     set_salesforce_case_fields,
-    wait_for_salesforce_bug_sync,
 )
 from salesforce_routes import (
     SalesforceRouteError,
@@ -371,9 +370,9 @@ class Workspace:
         details: str,
         result_message: str,
     ) -> None:
-        """Buganizer Claim is committed; wait for backend Salesforce sync."""
+        """Buganizer Claim is committed; move directly to Salesforce routing."""
         with self.lock:
-            self.action = "salesforce_claim_wait"
+            self.action = "salesforce_claim_form"
             self.team = ""
             self.assignee_email = "robotics-support@google.com"
             self.details = details
@@ -1347,15 +1346,10 @@ class Workspace:
         self,
         fields: dict[str, str],
     ) -> dict[str, Any]:
-        """Complete Salesforce Reassign without racing Buganizer synchronization.
+        """Complete the Salesforce half of Reassign after manual verification.
 
-        Salesforce is never mutated until the Case reaches ``Customer Responded``
-        (or is already Closed).  This prevents the later Buganizer->Salesforce
-        backend sync from overwriting/reopening a Case we just completed.
-
-        After the synchronization barrier, every write remains idempotent:
-        owner, Feed Details, route fields, and Closed Status are each skipped
-        when Salesforce already contains the desired state.
+        The Paperwork UI requires the technician to confirm that Salesforce has
+        received the Buganizer update before this method performs any mutation.
         """
         snap = self.snapshot()
         if not snap["team"] or snap["action"] != "salesforce_reassign_form":
@@ -1375,26 +1369,9 @@ class Workspace:
         bug_number = clean(snap["bug_number"])
         details = clean(snap.get("details"))
 
-        # Synchronization barrier.
-        #
-        # This MUST happen before Change Owner, Feed, routing fields, or Status.
-        # The asynchronous Buganizer integration changes Salesforce to
-        # "Customer Responded". Mutating sooner can be overwritten later.
         self.update_launch(
             int(snap["session_id"]),
-            sf_phase="Waiting for Buganizer to sync to Salesforce...",
-        )
-        sync_status = wait_for_salesforce_bug_sync(
-            self.sf_page,
-            bug_number,
-            timeout_seconds=120.0,
-        )
-
-        # If a retry finds the Case already Closed, the remaining helpers are
-        # safe/idempotent, but do not needlessly force another sync wait.
-        self.update_launch(
-            int(snap["session_id"]),
-            sf_phase=f"Salesforce synchronized ({sync_status}). Checking owner...",
+            sf_phase="Checking Salesforce owner...",
         )
 
         # 1. Details -> current owner -> Change Owner only if necessary.
@@ -1434,7 +1411,7 @@ class Workspace:
             int(snap["session_id"]),
             sf_phase="Checking Salesforce Case status...",
         )
-        close_salesforce_case(
+        status_changed = close_salesforce_case(
             self.sf_page,
             bug_number,
         )
@@ -1450,64 +1427,18 @@ class Workspace:
             "details_saved": bool(details),
             "fields": dict(fields),
             "closed": True,
-            "sync_status": sync_status,
+            "status_changed": status_changed,
         }
-
-
-    def wait_for_salesforce_claim_sync(self) -> str:
-        """Wait for Buganizer's backend update before showing Claim choices.
-
-        This method performs no Salesforce mutation. It only verifies the exact
-        Case and waits for the authoritative Customer Responded status.
-        """
-        snap = self.snapshot()
-        if snap["action"] not in {
-            "salesforce_claim_wait",
-            "salesforce_claim_form",
-        }:
-            raise PaperworkError(
-                "Salesforce Claim synchronization is not ready."
-            )
-
-        self._ensure_salesforce_case_for_commit(snap)
-        assert self.sf_page is not None
-
-        self.set_managed_window_state(self.sf_page, "normal")
-        try:
-            self.sf_page.bring_to_front()
-        except Exception:
-            pass
-
-        self.update_launch(
-            int(snap["session_id"]),
-            sf_phase="Waiting for Buganizer to sync to Salesforce...",
-        )
-        status = wait_for_salesforce_bug_sync(
-            self.sf_page,
-            clean(snap["bug_number"]),
-            timeout_seconds=120.0,
-        )
-        self.update_launch(
-            int(snap["session_id"]),
-            sf_phase=f"Salesforce synchronized ({status}).",
-        )
-        return status
 
 
     def execute_salesforce_claim(
         self,
         fields: dict[str, str],
     ) -> dict[str, Any]:
-        """Complete the Salesforce half of Claim.
+        """Complete the Salesforce half of Claim after manual verification.
 
-        Ordering intentionally matches Reassign:
-          Buganizer has already committed;
-          wait for Salesforce Customer Responded;
-          check/assign current Salesforce owner;
-          post the same Details to Feed;
-          set only mismatched routed fields;
-          close only if needed;
-          verify each mutation.
+        The Paperwork UI requires the technician to confirm that Salesforce has
+        received the Buganizer update before this method performs any mutation.
         """
         snap = self.snapshot()
         if snap["action"] != "salesforce_claim_form":
@@ -1529,17 +1460,7 @@ class Workspace:
 
         self.update_launch(
             int(snap["session_id"]),
-            sf_phase="Waiting for Buganizer to sync to Salesforce...",
-        )
-        sync_status = wait_for_salesforce_bug_sync(
-            self.sf_page,
-            bug_number,
-            timeout_seconds=120.0,
-        )
-
-        self.update_launch(
-            int(snap["session_id"]),
-            sf_phase=f"Salesforce synchronized ({sync_status}). Checking owner...",
+            sf_phase="Checking Salesforce owner...",
         )
         owner = claim_salesforce_case(self.sf_page, bug_number)
         self.update_salesforce_progress(
@@ -1574,7 +1495,7 @@ class Workspace:
             int(snap["session_id"]),
             sf_phase="Checking Salesforce Case status...",
         )
-        close_salesforce_case(
+        status_changed = close_salesforce_case(
             self.sf_page,
             bug_number,
         )
@@ -1590,7 +1511,7 @@ class Workspace:
             "details_saved": bool(details),
             "fields": dict(fields),
             "closed": True,
-            "sync_status": sync_status,
+            "status_changed": status_changed,
         }
 
 
@@ -3682,42 +3603,6 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
 
-            # If Buganizer already committed on an earlier attempt, never run
-            # Claim again. Only retry the read-only Salesforce sync barrier.
-            if state["action"] == "salesforce_claim_wait":
-                try:
-                    sync_status = BROWSER_WORKER.submit(
-                        WORKSPACE.wait_for_salesforce_claim_sync,
-                        wait=True,
-                        timeout=150,
-                    )
-                except FutureTimeoutError:
-                    self.json(
-                        {
-                            "ok": False,
-                            "error": "Buganizer Claim is already complete, but "
-                                     "Salesforce has not reached Customer Responded "
-                                     "yet. No Salesforce changes were made. Press "
-                                     "Commit again to re-check safely.",
-                        },
-                        HTTPStatus.GATEWAY_TIMEOUT,
-                    )
-                    return
-                except Exception as error:
-                    self.json(
-                        {"ok": False, "error": str(error)},
-                        HTTPStatus.INTERNAL_SERVER_ERROR,
-                    )
-                    return
-
-                WORKSPACE.show_salesforce_claim_form()
-                print(
-                    f"Salesforce sync ready for Claim Bug "
-                    f"{state['bug_number']}: {sync_status}"
-                )
-                self.json({"ok": True, "next": "salesforce"})
-                return
-
             if state["action"] != "claim_form":
                 self.json(
                     {
@@ -3766,9 +3651,8 @@ class Handler(BaseHTTPRequestHandler):
                 else "Buganizer was already assigned to robotics-support@google.com."
             )
 
-            # Persist the successful Buganizer commit BEFORE waiting. If the
-            # backend sync is slow, retries resume here rather than reposting
-            # the Buganizer comment or reassignment.
+            # Buganizer is complete. The technician will manually verify that
+            # Salesforce has received the update before Salesforce automation.
             WORKSPACE.begin_salesforce_claim(
                 details=result["details"],
                 result_message=assignee_note + details_note,
@@ -3777,39 +3661,7 @@ class Handler(BaseHTTPRequestHandler):
             print(
                 f"Buganizer Claim completed for Bug "
                 f"{state['bug_number']}: robotics-support@google.com. "
-                "Waiting for Salesforce Customer Responded."
-            )
-
-            try:
-                sync_status = BROWSER_WORKER.submit(
-                    WORKSPACE.wait_for_salesforce_claim_sync,
-                    wait=True,
-                    timeout=150,
-                )
-            except FutureTimeoutError:
-                self.json(
-                    {
-                        "ok": False,
-                        "error": "Buganizer Claim completed successfully, but "
-                                 "Salesforce has not reached Customer Responded "
-                                 "yet. No Salesforce changes were made. Press "
-                                 "Commit again to re-check safely.",
-                    },
-                    HTTPStatus.GATEWAY_TIMEOUT,
-                )
-                return
-            except Exception as error:
-                self.json(
-                    {"ok": False, "error": str(error)},
-                    HTTPStatus.INTERNAL_SERVER_ERROR,
-                )
-                return
-
-            WORKSPACE.show_salesforce_claim_form()
-            print(
-                f"Salesforce sync ready for Claim Bug "
-                f"{state['bug_number']}: {sync_status}. "
-                "Showing Claim route choices."
+                "Showing Salesforce route choices for manual verification."
             )
             self.json({"ok": True, "next": "salesforce"})
             return
@@ -3977,6 +3829,16 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return
 
+            if result.get("status_changed"):
+                self.json(
+                    {
+                        "ok": False,
+                        "error": 'Salesforce Status was changed to Closed. Verify that Buganizer has already finished updating Salesforce. If the Case is correct and remains Closed, click Exit. If Buganizer has not updated Salesforce yet, or changes the Case afterward, wait for that update to finish and then click Complete again.',
+                    },
+                    HTTPStatus.CONFLICT,
+                )
+                return
+
             bug_note = clean(state.get("result_message"))
             sf_note = (
                 f" Salesforce was assigned to "
@@ -4053,6 +3915,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.json(
                     {"ok": False, "error": str(error)},
                     HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
+                return
+
+            if result.get("status_changed"):
+                self.json(
+                    {
+                        "ok": False,
+                        "error": 'Salesforce Status was changed to Closed. Verify that Buganizer has already finished updating Salesforce. If the Case is correct and remains Closed, click Exit. If Buganizer has not updated Salesforce yet, or changes the Case afterward, wait for that update to finish and then click Complete again.',
+                    },
+                    HTTPStatus.CONFLICT,
                 )
                 return
 
