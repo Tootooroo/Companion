@@ -18,7 +18,7 @@ class SalesforceRouteError(ValueError):
 class SalesforceCaseFields:
     operation: str
     case_type: str
-    component: str
+    component: str | None = None
     resolution_reason: str = "Google Migrated"
     sub_category: str | None = None
 
@@ -26,11 +26,12 @@ class SalesforceCaseFields:
         values = {
             "Operation": self.operation,
             "Type": self.case_type,
-            "Component": self.component,
             "Resolution Reason": self.resolution_reason,
         }
         if self.sub_category:
             values["Sub Category"] = self.sub_category
+        if self.component:
+            values["Component"] = self.component
         return values
 
 
@@ -95,8 +96,8 @@ _FORM_SPECS: dict[str, dict[str, Any]] = {
                 "options": ["Robot Positioning / Locomotion", "Robot Start-Up"],
             },
             {
-                "key": "component",
-                "label": "Component",
+                "key": "sub_category",
+                "label": "Sub Category",
                 "options": [
                     "Ansible",
                     "Apollo Operator",
@@ -119,8 +120,8 @@ _FORM_SPECS: dict[str, dict[str, Any]] = {
                 ],
             },
             {
-                "key": "component",
-                "label": "Component",
+                "key": "sub_category",
+                "label": "Sub Category",
                 "options": [
                     "Apollo Operator",
                     "Helios",
@@ -144,8 +145,8 @@ _FORM_SPECS: dict[str, dict[str, Any]] = {
                 ],
             },
             {
-                "key": "component",
-                "label": "Component",
+                "key": "sub_category",
+                "label": "Sub Category",
                 "options": [
                     "Apollo Operator",
                     "Helios",
@@ -258,9 +259,9 @@ def resolve_reassign_route(
             ["Robot Positioning / Locomotion", "Robot Start-Up"],
             "Operation",
         )
-        component = _choice(
+        sub_category = _choice(
             selections,
-            "component",
+            "sub_category",
             [
                 "Ansible",
                 "Apollo Operator",
@@ -269,12 +270,12 @@ def resolve_reassign_route(
                 "Configuration",
                 "Unknown Software",
             ],
-            "Component",
+            "Sub Category",
         )
         return SalesforceCaseFields(
             operation=operation,
             case_type="Software",
-            component=component,
+            sub_category=sub_category,
         )
 
     if team == "Research Team":
@@ -287,9 +288,9 @@ def resolve_reassign_route(
             ],
             "Operation",
         )
-        component = _choice(
+        sub_category = _choice(
             selections,
-            "component",
+            "sub_category",
             [
                 "Apollo Operator",
                 "Helios",
@@ -299,12 +300,12 @@ def resolve_reassign_route(
                 "Tracking/IK",
                 "Unknown Software",
             ],
-            "Component",
+            "Sub Category",
         )
         return SalesforceCaseFields(
             operation=operation,
             case_type="Software",
-            component=component,
+            sub_category=sub_category,
         )
 
     if team == "Engineering Team":
@@ -317,9 +318,9 @@ def resolve_reassign_route(
             ],
             "Operation",
         )
-        component = _choice(
+        sub_category = _choice(
             selections,
-            "component",
+            "sub_category",
             [
                 "Apollo Operator",
                 "Helios",
@@ -328,19 +329,19 @@ def resolve_reassign_route(
                 "Configuration",
                 "Unknown Software",
             ],
-            "Component",
+            "Sub Category",
         )
         return SalesforceCaseFields(
             operation=operation,
             case_type="Software",
-            component=component,
+            sub_category=sub_category,
         )
 
     if team == "Other":
         return SalesforceCaseFields(
             operation="Robot Start-Up",
             case_type="Software",
-            component="Dev PC",
+            sub_category="Dev PC",
         )
 
     raise SalesforceRouteError(f"No Salesforce route is configured for {team!r}.")
@@ -469,7 +470,7 @@ _CLAIM_HARDWARE = {
     },
 }
 
-# Non-Hardware map: Type -> {Component (Sub Category): Resolution Reason}
+# Non-Hardware map: Type -> {Sub Category: Resolution Reason}
 _CLAIM_NON_HARDWARE = {
     "Software": {
         "Ansible": "Resolved",
@@ -528,13 +529,13 @@ def _claim_issue_records() -> list[dict[str, str]]:
                 }
             )
 
-    for case_type, components in _CLAIM_NON_HARDWARE.items():
-        for component, resolution_reason in components.items():
+    for case_type, sub_categories in _CLAIM_NON_HARDWARE.items():
+        for sub_category, resolution_reason in sub_categories.items():
             records.append(
                 {
                     "case_type": case_type,
-                    "sub_category": "",
-                    "component": component,
+                    "sub_category": sub_category,
+                    "component": "",
                     "resolution_reason": resolution_reason,
                 }
             )
@@ -553,18 +554,26 @@ def _claim_issue_options() -> list[str]:
 
     counts: dict[str, int] = {}
     for record in records:
-        component = record["component"]
-        counts[component] = counts.get(component, 0) + 1
+        issue_value = (
+            record["component"]
+            if record["case_type"] == "Hardware"
+            else record["sub_category"]
+        )
+        counts[issue_value] = counts.get(issue_value, 0) + 1
 
     options: list[str] = []
     for record in records:
-        component = record["component"]
-        if counts[component] == 1:
-            label = component
+        issue_value = (
+            record["component"]
+            if record["case_type"] == "Hardware"
+            else record["sub_category"]
+        )
+        if counts[issue_value] == 1:
+            label = issue_value
         elif record["case_type"] == "Hardware":
-            label = f"{component} — {record['sub_category']}"
+            label = f"{issue_value} — {record['sub_category']}"
         else:
-            label = f"{component} — {record['case_type']}"
+            label = f"{issue_value} — {record['case_type']}"
         options.append(label)
 
     return sorted(options, key=str.casefold)
@@ -576,18 +585,26 @@ def _claim_issue_lookup() -> dict[str, dict[str, str]]:
 
     counts: dict[str, int] = {}
     for record in records:
-        component = record["component"]
-        counts[component] = counts.get(component, 0) + 1
+        issue_value = (
+            record["component"]
+            if record["case_type"] == "Hardware"
+            else record["sub_category"]
+        )
+        counts[issue_value] = counts.get(issue_value, 0) + 1
 
     lookup: dict[str, dict[str, str]] = {}
     for record in records:
-        component = record["component"]
-        if counts[component] == 1:
-            label = component
+        issue_value = (
+            record["component"]
+            if record["case_type"] == "Hardware"
+            else record["sub_category"]
+        )
+        if counts[issue_value] == 1:
+            label = issue_value
         elif record["case_type"] == "Hardware":
-            label = f"{component} — {record['sub_category']}"
+            label = f"{issue_value} — {record['sub_category']}"
         else:
-            label = f"{component} — {record['case_type']}"
+            label = f"{issue_value} — {record['case_type']}"
 
         if label in lookup:
             raise RuntimeError(f"Duplicate Claim issue label: {label}")
@@ -654,7 +671,7 @@ def resolve_claim_route(
         operation=operation,
         case_type=route["case_type"],
         sub_category=route["sub_category"] or None,
-        component=route["component"],
+        component=route["component"] or None,
         resolution_reason=route["resolution_reason"],
     )
 
