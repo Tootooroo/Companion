@@ -773,6 +773,112 @@ def _open_salesforce_details_tab(page: Any) -> Any:
     ) from last_error
 
 
+
+def _assert_salesforce_case_matches_bug(page: Any, bug_number: str) -> None:
+    """Fail closed unless the currently visible Salesforce Case matches the bug.
+
+    Salesforce Service Console keeps multiple Case workspace tabs alive at once.
+    A generic locator can therefore still see DOM from older tabs.  This guard
+    only trusts visible Case content and requires the requested 9-digit
+    Buganizer number to be present in the visible Case Subject/header before a
+    mutation is allowed.
+    """
+    expected = str(bug_number or "").strip()
+    if len(expected) != 9 or not expected.isdigit():
+        raise PaperworkError(
+            "Cannot verify the Salesforce Case because the Buganizer number is "
+            f"invalid: {bug_number!r}"
+        )
+
+    visible_texts: list[str] = []
+
+    # Prefer the actual Case Subject field because it is specific to the active
+    # Case and is present in the Details pane shown by this Salesforce layout.
+    subject_candidates = (
+        page.locator(
+            '[data-target-selection-name="sfdc:RecordField.Case.Subject"]'
+        ),
+        page.locator('records-record-layout-item[field-label="Subject"]'),
+        page.locator('lightning-output-field[field-name="Subject"]'),
+    )
+
+    for group in subject_candidates:
+        for index in range(group.count()):
+            node = group.nth(index)
+            try:
+                if not node.is_visible():
+                    continue
+                value = " ".join(node.inner_text().split())
+                if value:
+                    visible_texts.append(value)
+                    if re.search(rf"(?<!\d){re.escape(expected)}(?!\d)", value):
+                        return
+            except Exception:
+                continue
+
+    # Fallback for Salesforce layouts where Subject is rendered without the
+    # normal record-field wrapper.  Only accept a visible "Issue <bug>" node.
+    issue_pattern = re.compile(
+        rf"\bIssue\s+{re.escape(expected)}\b",
+        re.IGNORECASE,
+    )
+    fallback_nodes = page.get_by_text(issue_pattern)
+    for index in range(fallback_nodes.count()):
+        node = fallback_nodes.nth(index)
+        try:
+            if node.is_visible():
+                return
+        except Exception:
+            continue
+
+    # Last visible-only fallback: inspect active/visible workspace panels, never
+    # the whole DOM, so stale hidden Salesforce tabs cannot satisfy the check.
+    panel_selectors = (
+        '[role="tabpanel"]:visible',
+        '.oneWorkspaceTabWrapper:visible',
+        'section[role="tabpanel"]:visible',
+    )
+    for selector in panel_selectors:
+        panels = page.locator(selector)
+        for index in range(panels.count()):
+            panel = panels.nth(index)
+            try:
+                value = " ".join(panel.inner_text().split())
+                if value:
+                    visible_texts.append(value[:500])
+                    if issue_pattern.search(value):
+                        return
+            except Exception:
+                continue
+
+    # If another issue number is visible, report it so the technician knows
+    # exactly why the automation stopped.
+    observed_numbers: list[str] = []
+    for value in visible_texts:
+        for found in re.findall(r"\b\d{9}\b", value):
+            if found != expected and found not in observed_numbers:
+                observed_numbers.append(found)
+
+    if observed_numbers:
+        detail = (
+            " The visible Salesforce Case appears to reference issue "
+            + ", ".join(observed_numbers[:3])
+            + "."
+        )
+    else:
+        detail = (
+            " The active Salesforce Case subject could not be verified."
+        )
+
+    raise PaperworkError(
+        f"Safety check stopped the Salesforce edit: expected issue {expected}, "
+        "but the currently visible Case does not match."
+        + detail
+        + " Return to the Salesforce Case for the current Buganizer issue and "
+          "click Complete again."
+    )
+
+
 def _salesforce_current_user_identity(page: Any) -> dict[str, str]:
     """Identify the user authenticated in this Salesforce browser session.
 
@@ -972,6 +1078,32 @@ def claim_salesforce_case(page: Any, bug_number: str) -> str:
         page.wait_for_timeout(150)
         _open_salesforce_details_tab(page)
 
+        # Freeze the Salesforce Case record id for this operation. If the user
+        # clicks into a different Case while automation is running, abort before
+        # any ownership mutation can be submitted.
+        record_match = re.search(
+            r"/lightning/r/Case/([^/?#]+)/",
+            page.url,
+            flags=re.IGNORECASE,
+        )
+        expected_case_record_id = record_match.group(1) if record_match else ""
+
+        def assert_same_case() -> None:
+            if not expected_case_record_id:
+                return
+            current_match = re.search(
+                r"/lightning/r/Case/([^/?#]+)/",
+                page.url,
+                flags=re.IGNORECASE,
+            )
+            current_id = current_match.group(1) if current_match else ""
+            if current_id != expected_case_record_id:
+                raise PaperworkError(
+                    "Salesforce Case changed while paperwork automation was "
+                    "running. No owner change was submitted. Return to the "
+                    f"Case for bug {bug_number} and retry."
+                )
+
         identity = _salesforce_current_user_identity(page)
         current_owner = _salesforce_case_owner_text(page)
 
@@ -1011,6 +1143,8 @@ def claim_salesforce_case(page: Any, bug_number: str) -> str:
                 "Salesforce Case Owner field."
             )
 
+        _assert_salesforce_case_matches_bug(page, bug_number)
+        assert_same_case()
         try:
             owner_button.click(timeout=5_000)
         except Exception:
@@ -1029,14 +1163,15 @@ def claim_salesforce_case(page: Any, bug_number: str) -> str:
         search.click()
 
         def option_text(option: Any) -> str:
+            """Return visible text plus Salesforce lookup metadata for a row."""
             values: list[str] = []
             try:
                 values.append(option.inner_text())
             except Exception:
                 pass
             for attribute in (
-                "data-recordid", "data-value", "value", "title",
-                "aria-label", "id",
+                "data-recordid", "data-record-id", "data-value", "value",
+                "title", "aria-label", "id",
             ):
                 try:
                     value = option.get_attribute(attribute)
@@ -1045,107 +1180,216 @@ def claim_salesforce_case(page: Any, bug_number: str) -> str:
                 except Exception:
                     pass
             try:
-                href = option.locator("a").first.get_attribute("href")
-                if href:
-                    values.append(href)
+                links = option.locator("a")
+                for link_index in range(min(links.count(), 3)):
+                    href = links.nth(link_index).get_attribute("href")
+                    if href:
+                        values.append(href)
             except Exception:
                 pass
             return " ".join(values)
 
-        def visible_options() -> list[Any]:
-            result: list[Any] = []
-            options = dialog.get_by_role("option")
-            for index in range(options.count()):
-                candidate = options.nth(index)
+        def visible_owner_rows() -> list[Any]:
+            """Return actual visible rows from Aura/Lightning owner lookups.
+
+            This Salesforce build exposes the popup as role=listbox but does not
+            consistently expose each person as role=option.  Therefore we
+            discover the visible listbox first and then collect its row-shaped
+            descendants instead of depending on get_by_role("option").
+            """
+            rows: list[Any] = []
+            seen: set[str] = set()
+
+            listboxes = dialog.locator('[role="listbox"]')
+            for box_index in range(listboxes.count()):
+                box = listboxes.nth(box_index)
                 try:
-                    if candidate.is_visible() and candidate.is_enabled():
-                        result.append(candidate)
+                    if not box.is_visible():
+                        continue
                 except Exception:
                     continue
-            return result
 
-        def choose_matching(options: list[Any]) -> Any | None:
-            if len(options) == 1:
-                return options[0]
+                # Salesforce Aura variants seen in Change Case Owner.
+                candidates = box.locator(
+                    '[role="option"], '
+                    'li, '
+                    'a[data-recordid], '
+                    '[data-recordid], '
+                    '.uiMenuItem, '
+                    '.lookup__list-item'
+                )
 
+                for index in range(candidates.count()):
+                    candidate = candidates.nth(index)
+                    try:
+                        if not candidate.is_visible():
+                            continue
+                        content = " ".join(candidate.inner_text().split())
+                        if not content:
+                            continue
+                    except Exception:
+                        continue
+
+                    # Avoid collecting both a wrapper and its nested link for
+                    # the same person. Prefer the smallest row-like element.
+                    try:
+                        key = (
+                            candidate.get_attribute("data-recordid")
+                            or candidate.get_attribute("id")
+                            or content
+                        )
+                    except Exception:
+                        key = content
+                    key = norm(key)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    rows.append(candidate)
+
+            # Compatibility fallback for orgs that do expose conventional
+            # ARIA options.
+            if not rows:
+                options = dialog.get_by_role("option")
+                for index in range(options.count()):
+                    candidate = options.nth(index)
+                    try:
+                        if candidate.is_visible():
+                            rows.append(candidate)
+                    except Exception:
+                        continue
+
+            return rows
+
+        def row_lines(row: Any) -> list[str]:
+            try:
+                return [
+                    norm(line)
+                    for line in row.inner_text().splitlines()
+                    if line.strip()
+                ]
+            except Exception:
+                return []
+
+        def choose_matching(rows: list[Any]) -> Any | None:
             user_id = norm(identity.get("id", ""))
             email = norm(identity.get("email", ""))
             name = norm(identity.get("name", ""))
 
             scored: list[tuple[int, int, Any]] = []
-            for index, option in enumerate(options):
-                blob = norm(option_text(option))
+            for index, row in enumerate(rows):
+                blob = norm(option_text(row))
+                lines = row_lines(row)
                 score = 0
+
+                # Strongest match: Salesforce user record id in the result
+                # metadata/href. This remains reliable even when names collide.
                 if user_id and user_id in blob:
-                    score = 100
+                    score = 120
                 elif email and email in blob:
-                    score = 95
-                elif name:
-                    # Owner options normally have the person's name on line 1.
-                    lines = [
-                        norm(line)
-                        for line in option.inner_text().splitlines()
-                        if line.strip()
-                    ]
-                    if lines and lines[0] == name:
-                        score = 90
+                    score = 110
+                elif name and lines:
+                    # In this Aura lookup the first visible line is the user's
+                    # display name and the second line is their role/team.
+                    if lines[0] == name:
+                        score = 100
+                    elif any(line == name for line in lines):
+                        score = 95
                     elif name in blob:
                         score = 80
+
                 if score:
-                    scored.append((score, -index, option))
+                    scored.append((score, -index, row))
 
             if not scored:
                 return None
-            scored.sort(key=lambda row: (row[0], row[1]), reverse=True)
+
+            scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
             return scored[0][2]
 
-        deadline = time.monotonic() + 5.0
-        options: list[Any] = []
+        def click_owner_row(row: Any) -> None:
+            """Click a selectable element inside the matched Salesforce row."""
+            # Prefer an actual anchor/ARIA option where present.
+            for selector in (
+                'a',
+                '[role="option"]',
+                '[data-recordid]',
+            ):
+                try:
+                    target = row.locator(selector).first
+                    if target.count() and target.is_visible():
+                        target.click(timeout=5_000)
+                        return
+                except Exception:
+                    pass
+
+            # Aura also supports clicking the row/text itself; the event bubbles
+            # to the menu item controller.
+            row.click(timeout=5_000)
+
+        # Wait for the owner suggestions to render.  The screenshot supplied by
+        # the user shows a role=listbox Aura menu whose people are not exposed
+        # as role=option, so use visible_owner_rows() here.
+        deadline = time.monotonic() + 6.0
+        rows: list[Any] = []
+        selected = None
         while time.monotonic() < deadline:
-            options = visible_options()
-            if options:
+            rows = visible_owner_rows()
+            selected = choose_matching(rows)
+            if selected is not None:
                 break
             page.wait_for_timeout(120)
 
-        selected = choose_matching(options)
-
-        # Multiple names: filter using the authenticated user's exact identity.
+        # If the initially displayed suggestions did not match, type the
+        # authenticated user's identity into the same combobox and try again.
         if selected is None and (identity.get("name") or identity.get("email")):
-            query = identity.get("email") or identity.get("name")
-            search.fill("")
-            search.type(query, delay=10)
-            page.wait_for_timeout(350)
+            queries: list[str] = []
+            for value in (identity.get("email"), identity.get("name")):
+                value = str(value or "").strip()
+                if value and value not in queries:
+                    queries.append(value)
 
-            deadline = time.monotonic() + 5.0
-            while time.monotonic() < deadline:
-                options = visible_options()
-                selected = choose_matching(options)
+            for query in queries:
+                search.fill("")
+                search.type(query, delay=10)
+
+                deadline = time.monotonic() + 6.0
+                while time.monotonic() < deadline:
+                    rows = visible_owner_rows()
+                    selected = choose_matching(rows)
+                    if selected is not None:
+                        break
+                    page.wait_for_timeout(120)
+
                 if selected is not None:
                     break
-                page.wait_for_timeout(120)
 
         if selected is None:
-            options = visible_options()
-            if len(options) == 1:
-                selected = options[0]
-            elif len(options) > 1:
-                labels = [
-                    " — ".join(
+            rows = visible_owner_rows()
+            labels = []
+            for row in rows[:8]:
+                try:
+                    label = " — ".join(
                         line.strip()
-                        for line in option.inner_text().splitlines()
+                        for line in row.inner_text().splitlines()
                         if line.strip()
                     )
-                    for option in options
-                ]
-                raise PaperworkError(
-                    "Salesforce showed multiple Case Owner choices and the "
-                    "logged-in user could not be matched automatically. "
-                    "Visible choices: " + "; ".join(labels[:8])
-                )
-            else:
-                raise PaperworkError(
-                    "Salesforce did not display a selectable Case Owner."
-                )
+                    if label and label not in labels:
+                        labels.append(label)
+                except Exception:
+                    pass
+
+            identity_label = (
+                identity.get("name")
+                or identity.get("email")
+                or identity.get("id")
+                or "unknown Salesforce user"
+            )
+            visible_label = "; ".join(labels) if labels else "none detected"
+            raise PaperworkError(
+                "Could not match the authenticated Salesforce user "
+                f"({identity_label}) in Change Case Owner. "
+                f"Visible choices: {visible_label}"
+            )
 
         selected_text = selected.inner_text().strip()
         owner_name = next(
@@ -1159,7 +1403,7 @@ def claim_salesforce_case(page: Any, bug_number: str) -> str:
                 "Salesforce displayed an owner option without a usable name."
             )
 
-        selected.click(timeout=5_000)
+        click_owner_row(selected)
 
         change_owner = dialog.get_by_role(
             "button",
@@ -1167,6 +1411,8 @@ def claim_salesforce_case(page: Any, bug_number: str) -> str:
             exact=True,
         )
         change_owner.wait_for(state="visible", timeout=5_000)
+        _assert_salesforce_case_matches_bug(page, bug_number)
+        assert_same_case()
         change_owner.click(timeout=5_000)
 
         already_owner = dialog.get_by_text(
@@ -1346,6 +1592,7 @@ def post_salesforce_feed_comment(
             ],
             timeout=4_000,
         )
+        _assert_salesforce_case_matches_bug(page, bug_number)
         share_update.click()
 
         for post_control in (
@@ -1415,6 +1662,7 @@ def post_salesforce_feed_comment(
                 "Salesforce Feed Share button did not become enabled."
             )
 
+        _assert_salesforce_case_matches_bug(page, bug_number)
         share_button.click()
 
         clear_deadline = time.monotonic() + 15.0
@@ -1506,6 +1754,7 @@ def set_salesforce_case_description(
                 "Salesforce did not expose the Edit Description control."
             )
 
+        _assert_salesforce_case_matches_bug(page, bug_number)
         edit_description.click()
 
         editor = None
@@ -1556,6 +1805,7 @@ def set_salesforce_case_description(
                 "Salesforce Description editor did not expose a Save button."
             )
 
+        _assert_salesforce_case_matches_bug(page, bug_number)
         save.click()
 
         # Inline edit should close and the saved Description should render.
@@ -1858,6 +2108,7 @@ def set_salesforce_case_fields(
         )
 
         edit_operation = first_visible(candidates, timeout=6_000)
+        _assert_salesforce_case_matches_bug(page, bug_number)
         edit_operation.click()
 
         ordered_labels = (
@@ -1888,6 +2139,7 @@ def set_salesforce_case_fields(
                 page.locator('button:visible:has-text("Save")').first,
             ]
         )
+        _assert_salesforce_case_matches_bug(page, bug_number)
         save.click()
 
         try:
@@ -2071,8 +2323,8 @@ def wait_for_salesforce_bug_sync(
     )
 
 
-def close_salesforce_case(page: Any, bug_number: str) -> None:
-    """Set the open Salesforce Case Status to Closed and verify the save."""
+def close_salesforce_case(page: Any, bug_number: str) -> bool:
+    """Set the open Salesforce Case Status to Closed and report if it changed."""
 
     def first_visible(candidates: list[Any], timeout: int = 5_000) -> Any:
         last_error: Exception | None = None
@@ -2104,7 +2356,7 @@ def close_salesforce_case(page: Any, bug_number: str) -> None:
         status_container.wait_for(state="visible", timeout=8_000)
         if re.search(r"\bClosed\b", status_container.inner_text()):
             print(f"Salesforce Case for bug {bug_number} is already Closed.")
-            return
+            return False
 
         edit_status = first_visible(
             [
@@ -2115,6 +2367,7 @@ def close_salesforce_case(page: Any, bug_number: str) -> None:
                 ).first,
             ]
         )
+        _assert_salesforce_case_matches_bug(page, bug_number)
         edit_status.click()
 
         status = first_visible(
@@ -2182,16 +2435,22 @@ def close_salesforce_case(page: Any, bug_number: str) -> None:
                 page.locator('button:has-text("Save")').first,
             ]
         )
+        _assert_salesforce_case_matches_bug(page, bug_number)
         save.click()
 
         edit_status.wait_for(state="visible", timeout=12_000)
         status_container.wait_for(state="visible", timeout=5_000)
         if not re.search(r"\bClosed\b", status_container.inner_text()):
             raise PaperworkError(
-                "Salesforce saved the Case, but Status was not verified as Closed."
+                "Salesforce was saved, but the Case did not remain Closed. "
+                "Buganizer may still be updating Salesforce. Wait for the "
+                "Buganizer update to finish, then click Complete again to retry "
+                "the Salesforce closeout. If the Case is already Closed after "
+                "the Buganizer update, you can Exit instead."
             )
 
         print(f"Closed the Salesforce Case for bug {bug_number}.")
+        return True
 
     except PaperworkError:
         raise
