@@ -750,28 +750,70 @@ def _search_salesforce_case(page: Any, bug_number: str) -> None:
         ) from error
 
 
-def _open_salesforce_details_tab(page: Any) -> Any:
-    """Open the Salesforce Case Details tab and return its visible tab/link."""
-    candidates = (
-        page.locator('a[data-tab-value="detailTab"]').first,
-        page.locator('a[data-label="Details"]').first,
-        page.get_by_role("tab", name="Details", exact=True).first,
-        page.get_by_role("link", name="Details", exact=True).first,
-    )
-    last_error: Exception | None = None
-    for candidate in candidates:
+def _visible_enabled(locator: Any) -> Any | None:
+    """Return the first currently visible/enabled match without waiting on hidden tabs."""
+    try:
+        count = locator.count()
+    except Exception:
+        return None
+    for index in range(count):
+        node = locator.nth(index)
         try:
-            candidate.wait_for(state="visible", timeout=4_000)
-            if candidate.is_enabled():
-                candidate.click()
-                page.wait_for_timeout(250)
-                return candidate
-        except Exception as error:
-            last_error = error
-    raise PaperworkError(
-        "Salesforce did not expose the Case Details tab."
-    ) from last_error
+            if node.is_visible() and node.is_enabled():
+                return node
+        except Exception:
+            continue
+    return None
 
+
+def _visible_salesforce_field(page: Any, target_names: tuple[str, ...]) -> Any | None:
+    """Find a field only in the currently visible Salesforce workspace DOM."""
+    for target in target_names:
+        node = _visible_enabled(page.locator(
+            f'[data-target-selection-name="{target}"]'
+        ))
+        if node is not None:
+            return node
+    return None
+
+
+def _open_salesforce_details_tab(page: Any) -> Any:
+    """Open the active Case Details tab without waiting on stale hidden workspace tabs."""
+    locator_groups = (
+        page.locator('a[data-tab-value="detailTab"]'),
+        page.locator('a[data-label="Details"]'),
+        page.get_by_role("tab", name="Details", exact=True),
+        page.get_by_role("link", name="Details", exact=True),
+    )
+    # Lightning normally already has Details rendered. Check synchronously first.
+    for group in locator_groups:
+        candidate = _visible_enabled(group)
+        if candidate is not None:
+            try:
+                selected = candidate.get_attribute("aria-selected")
+                cls = candidate.get_attribute("class") or ""
+                if selected != "true" and "active" not in cls.lower():
+                    candidate.click(timeout=2_000)
+                    page.wait_for_timeout(80)
+            except Exception:
+                try:
+                    candidate.click(timeout=2_000)
+                    page.wait_for_timeout(80)
+                except Exception:
+                    pass
+            return candidate
+
+    # One short bounded wait for Lightning rerender, rather than 4 x 4-second waits.
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        for group in locator_groups:
+            candidate = _visible_enabled(group)
+            if candidate is not None:
+                candidate.click(timeout=2_000)
+                page.wait_for_timeout(80)
+                return candidate
+        page.wait_for_timeout(80)
+    raise PaperworkError("Salesforce did not expose the active Case Details tab.")
 
 
 def _assert_salesforce_case_matches_bug(page: Any, bug_number: str) -> None:
@@ -1046,23 +1088,19 @@ def _salesforce_current_user_identity(page: Any) -> dict[str, str]:
 
 
 def _salesforce_case_owner_text(page: Any) -> str:
-    """Return the visible current Case Owner field text when available."""
-    containers = (
-        page.locator(
-            '[data-target-selection-name="sfdc:RecordField.Case.OwnerId"]'
-        ).first,
-        page.locator(
-            '[data-target-selection-name*="Case.Owner"]'
-        ).first,
-    )
-    for container in containers:
-        try:
-            container.wait_for(state="visible", timeout=2_500)
-            text = " ".join(container.inner_text().split()).strip()
-            if text:
-                return text
-        except Exception:
-            continue
+    """Return owner text from the active visible Case only; never wait on hidden tabs."""
+    for selector in (
+        '[data-target-selection-name="sfdc:RecordField.Case.OwnerId"]',
+        '[data-target-selection-name*="Case.Owner"]',
+    ):
+        node = _visible_enabled(page.locator(selector))
+        if node is not None:
+            try:
+                text = " ".join(node.inner_text().split()).strip()
+                if text:
+                    return text
+            except Exception:
+                pass
     return ""
 
 
@@ -1847,54 +1885,37 @@ def set_salesforce_case_fields(
     bug_number: str,
     fields: dict[str, str],
 ) -> bool:
-    """Set routed Salesforce Case fields and skip values already correct.
+    """Converge the active Salesforce Case to one authoritative routed state.
 
-    Important: Salesforce exposes both ``Component`` and ``Assembly Component``
-    on the Case. They are different fields. Reassign routing uses ``Component``.
-    ``Assembly Component`` is intentionally left untouched.
+    Open the active Case editor once and use the actual edit-mode comboboxes as
+    the authoritative current state.  This avoids unreliable display-mode value
+    extraction from Salesforce Lightning.  Every routed field is then confirmed
+    in dependency order; controls already holding the desired value are untouched.
+    Save occurs only when at least one value really changed, followed by complete
+    route verification.
+
+    ``Component`` and ``Assembly Component`` are deliberately different fields.
+    Routes that omit Component (for example Software) never look for or edit it.
     """
-
-    def first_visible(candidates: list[Any], timeout: int = 5_000) -> Any:
-        last_error: Exception | None = None
-        for candidate in candidates:
-            try:
-                candidate.wait_for(state="visible", timeout=timeout)
-                if candidate.is_enabled():
-                    return candidate
-            except Exception as error:
-                last_error = error
-        raise PaperworkError(
-            "Salesforce did not expose the expected Case field control."
-        ) from last_error
 
     def normalized(value: Any) -> str:
         return " ".join(str(value or "").split()).strip()
 
-    # Exact live Salesforce labels. Do NOT alias Component to Assembly Component.
     field_labels = {
         "Operation": ("Operation",),
-        "Type": ("Type",),
+        "Type": ("Case Type", "Type"),
         "Sub Category": ("Sub Category",),
         "Component": ("Component",),
         "Resolution Reason": ("Resolution Reason",),
     }
-
-    # Known Lightning target-selection names. Component and Assembly Component
-    # remain intentionally separate.
     target_selection_names = {
-        "Operation": (
-            "sfdc:RecordField.Case.Operation__c",
-        ),
-        "Type": (
-            "sfdc:RecordField.Case.Type",
-        ),
+        "Operation": ("sfdc:RecordField.Case.Operation__c",),
+        "Type": ("sfdc:RecordField.Case.Type",),
         "Sub Category": (
             "sfdc:RecordField.Case.Sub_Category__c",
             "sfdc:RecordField.Case.SubCategory__c",
         ),
-        "Component": (
-            "sfdc:RecordField.Case.Component__c",
-        ),
+        "Component": ("sfdc:RecordField.Case.Component__c",),
         "Resolution Reason": (
             "sfdc:RecordField.Case.Resolution_Reason__c",
             "sfdc:RecordField.Case.ResolutionReason__c",
@@ -1902,276 +1923,227 @@ def set_salesforce_case_fields(
     }
 
     def display_container(label: str) -> Any | None:
+        # Service Console keeps old workspace tabs mounted. Never use .first.
         for target in target_selection_names.get(label, ()):
-            container = page.locator(
+            node = _visible_enabled(page.locator(
                 f'[data-target-selection-name="{target}"]'
-            ).first
-            try:
-                if container.is_visible():
-                    return container
-            except Exception:
-                continue
+            ))
+            if node is not None:
+                return node
 
-        # Fallback: locate the exact visible label and its own field wrapper.
-        # Exact matching is critical so "Component" never resolves to
-        # "Assembly Component".
+        # Exact-label fallback prevents Component -> Assembly Component mistakes.
         for visible_label in field_labels.get(label, (label,)):
-            label_locator = page.get_by_text(
+            labels = page.get_by_text(
                 re.compile(rf"^{re.escape(visible_label)}$", re.IGNORECASE),
                 exact=True,
-            ).first
-            try:
-                label_locator.wait_for(state="visible", timeout=900)
-                container = label_locator.locator(
-                    "xpath=ancestor::*[.//button[contains(@title,'Edit')]][1]"
-                )
-                if container.is_visible():
-                    return container
-            except Exception:
-                continue
+            )
+            for index in range(labels.count()):
+                label_node = labels.nth(index)
+                try:
+                    if not label_node.is_visible():
+                        continue
+                    container = label_node.locator(
+                        "xpath=ancestor::*[.//button[contains(@title,'Edit')]][1]"
+                    )
+                    if container.count() and container.is_visible():
+                        return container
+                except Exception:
+                    continue
         return None
 
     def displayed_value(label: str) -> str:
-        """Read only the saved field value, never the edit button title."""
         container = display_container(label)
         if container is None:
             return ""
-
-        # Prefer Salesforce's output-field value nodes.
-        value_selectors = (
+        for selector in (
             "lightning-formatted-text",
             "lightning-formatted-rich-text",
             ".test-id__field-value",
             ".slds-form-element__static",
             "slot[name='outputField']",
-        )
-        for selector in value_selectors:
+        ):
             nodes = container.locator(selector)
             for index in range(nodes.count()):
                 node = nodes.nth(index)
                 try:
                     if node.is_visible():
                         value = normalized(node.inner_text())
-                        if value and value.casefold() != label.casefold():
+                        if value and value.casefold() not in {
+                            label.casefold(), "case type" if label == "Type" else ""
+                        }:
                             return value
                 except Exception:
                     continue
-
-        # Text fallback: explicitly remove label text and edit-action text.
         try:
-            lines = [
-                normalized(line)
-                for line in container.inner_text().splitlines()
-                if normalized(line)
-            ]
+            lines = [normalized(x) for x in container.inner_text().splitlines() if normalized(x)]
         except Exception:
             return ""
-
-        ignored = {
-            label.casefold(),
-            f"edit {label}".casefold(),
-            "edit",
-        }
+        ignored = {label.casefold(), f"edit {label}".casefold(), "edit"}
+        if label == "Type":
+            ignored.update({"case type", "edit case type"})
         for line in lines:
-            lowered = line.casefold()
-            if lowered in ignored:
-                continue
-            if lowered.startswith("edit "):
+            low = line.casefold()
+            if low in ignored or low.startswith("edit "):
                 continue
             return line
         return ""
 
-    def find_combobox(label: str) -> tuple[Any, str]:
+    def find_combobox(label: str, timeout_seconds: float = 2.5) -> tuple[Any, str]:
         labels = field_labels.get(label, (label,))
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
             for actual_label in labels:
-                controls = page.locator(
-                    f'button[role="combobox"][aria-label="{actual_label}"]'
-                )
-                for index in range(controls.count()):
-                    candidate = controls.nth(index)
-                    try:
-                        if candidate.is_visible() and candidate.is_enabled():
-                            return candidate, actual_label
-                    except Exception:
-                        continue
-            page.wait_for_timeout(100)
-        raise PaperworkError(
-            f"Salesforce did not expose the visible {label} dropdown."
-        )
+                for selector in (
+                    f'button[role="combobox"][aria-label="{actual_label}"]',
+                    f'[role="combobox"][aria-label="{actual_label}"]',
+                ):
+                    candidate = _visible_enabled(page.locator(selector))
+                    if candidate is not None:
+                        return candidate, actual_label
+            page.wait_for_timeout(60)
+        raise PaperworkError(f"Salesforce did not expose the visible {label} dropdown.")
 
     def select_picklist(label: str, value: str) -> bool:
+        # Reacquire every control. Parent picklists can rerender dependent controls.
         control, actual_label = find_combobox(label)
-        current = normalized(
-            control.get_attribute("data-value") or control.inner_text()
-        )
+        current = normalized(control.get_attribute("data-value") or control.inner_text())
         if current == value:
-            print(f"Salesforce: {label} is already {value}; skipping.")
+            print(f"Salesforce: {label} already {value}; confirmed.")
             return False
 
-        control.click()
-        option_sets = [
-            page.locator(
-                f'lightning-base-combobox-item[data-value="{value}"]'
-            ),
-            page.locator(f'[role="option"][data-value="{value}"]'),
-            page.get_by_role("option", name=value, exact=True),
-            page.get_by_text(value, exact=True),
-        ]
-
+        control.click(timeout=2_000)
         option = None
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + 3.5
         while time.monotonic() < deadline and option is None:
+            option_sets = (
+                page.locator(f'lightning-base-combobox-item[data-value="{value}"]'),
+                page.locator(f'[role="option"][data-value="{value}"]'),
+                page.get_by_role("option", name=value, exact=True),
+            )
             for options in option_sets:
-                for index in range(options.count()):
-                    candidate = options.nth(index)
-                    try:
-                        if not candidate.is_visible() or not candidate.is_enabled():
-                            continue
-                        candidate_value = normalized(
-                            candidate.get_attribute("data-value")
-                        )
-                        candidate_text = normalized(candidate.inner_text())
-                        if candidate_value == value or candidate_text == value:
-                            option = candidate
-                            break
-                    except Exception:
-                        continue
-                if option is not None:
+                candidate = _visible_enabled(options)
+                if candidate is not None:
+                    option = candidate
                     break
             if option is None:
-                page.wait_for_timeout(100)
+                page.wait_for_timeout(60)
 
         if option is None:
-            # Same fallback used in the coworker's implementation.
-            page.keyboard.type(value, delay=12)
+            # Preserve the original keyboard fallback for Lightning variants.
+            page.keyboard.type(value, delay=8)
             page.keyboard.press("Enter")
         else:
-            option.click()
+            option.click(timeout=2_000)
 
-        page.wait_for_timeout(180)
-        selected = normalized(
-            control.get_attribute("data-value") or control.inner_text()
-        )
-        if selected != value:
-            raise PaperworkError(
-                f"Salesforce did not retain {value} in {actual_label}."
-            )
-        return True
+        # A changed parent can rerender this control. Reacquire before verifying.
+        verify_deadline = time.monotonic() + 2.0
+        while time.monotonic() < verify_deadline:
+            try:
+                fresh, _ = find_combobox(label, timeout_seconds=0.35)
+                selected = normalized(fresh.get_attribute("data-value") or fresh.inner_text())
+                if selected == value:
+                    return True
+            except Exception:
+                pass
+            page.wait_for_timeout(60)
+        raise PaperworkError(f"Salesforce did not retain {value} in {actual_label}.")
 
     try:
         _open_salesforce_details_tab(page)
+        _assert_salesforce_case_matches_bug(page, bug_number)
 
-        desired: dict[str, str] = {
+        desired = {
             key: normalized(raw_value)
             for key, raw_value in fields.items()
             if key in field_labels and normalized(raw_value)
         }
 
-        # Inspect before editing. This makes retries safe.
-        mismatched: dict[str, str] = {}
-        for label, value in desired.items():
-            current = displayed_value(label)
-            if current == value:
-                print(f"Salesforce: {label} already {value}; skipping.")
-            else:
-                mismatched[label] = value
+        # Do not infer mismatches from display-mode output. Salesforce Service
+        # Console can render dependent fields differently between records, and a
+        # failed display read can look like a false mismatch. Enter the active
+        # Case editor once and inspect the real combobox values instead.
 
-        if not mismatched:
-            print(
-                f"Salesforce routing fields for bug {bug_number} are already "
-                "correct; no edit needed."
-            )
-            return False
-
+        # Enter inline edit from the active Operation field only.
         operation_container = display_container("Operation")
-        candidates: list[Any] = []
+        edit_operation = None
         if operation_container is not None:
-            candidates.extend(
-                [
-                    operation_container.locator(
-                        'button[title="Edit Operation"]'
-                    ).first,
-                    operation_container.locator(
-                        'button[title^="Edit"]'
-                    ).first,
-                ]
-            )
-        candidates.extend(
-            [
-                page.locator('button[title="Edit Operation"]').first,
-                page.get_by_role(
-                    "button", name="Edit Operation", exact=True
-                ).first,
-            ]
-        )
+            for selector in ('button[title="Edit Operation"]', 'button[title^="Edit"]'):
+                edit_operation = _visible_enabled(operation_container.locator(selector))
+                if edit_operation is not None:
+                    break
+        if edit_operation is None:
+            edit_operation = _visible_enabled(page.locator('button[title="Edit Operation"]'))
+        if edit_operation is None:
+            raise PaperworkError("Salesforce did not expose the active Edit Operation control.")
 
-        edit_operation = first_visible(candidates, timeout=6_000)
         _assert_salesforce_case_matches_bug(page, bug_number)
-        edit_operation.click()
+        edit_operation.click(timeout=2_000)
 
+        # Complete authoritative route. Reacquisition between every field is
+        # intentional because Case Type/Sub Category can rerender dependencies.
         ordered_labels = (
-            "Operation",
-            "Type",
-            "Sub Category",
-            "Component",
-            "Resolution Reason",
+            "Operation", "Type", "Sub Category", "Component", "Resolution Reason"
         )
         changed = False
         for label in ordered_labels:
-            value = mismatched.get(label, "")
-            if value:
-                print(f"Salesforce: setting {label} to {value}...")
-                changed = select_picklist(label, value) or changed
+            value = desired.get(label, "")
+            if not value:
+                continue  # Software/non-Hardware never even searches for Component.
+            print(f"Salesforce: confirming {label} = {value}...")
+            changed = select_picklist(label, value) or changed
 
         if not changed:
-            try:
-                page.get_by_role("button", name="Cancel", exact=True).click()
-            except Exception:
+            # The authoritative edit controls show the complete route is already
+            # correct. Exit edit mode without Save, so a no-change Case performs
+            # no Salesforce mutation and incurs no save/rerender verification.
+            cancel = _visible_enabled(page.get_by_role("button", name="Cancel", exact=True))
+            if cancel is not None:
+                cancel.click(timeout=2_000)
+            else:
                 page.keyboard.press("Escape")
+            print(
+                f"Salesforce routing fields for bug {bug_number} are already "
+                "correct; no save needed."
+            )
             return False
 
-        save = first_visible(
-            [
-                page.locator('button[name="SaveEdit"]:visible').first,
-                page.get_by_role("button", name="Save", exact=True).first,
-                page.locator('button:visible:has-text("Save")').first,
-            ]
-        )
-        _assert_salesforce_case_matches_bug(page, bug_number)
-        save.click()
+        save = _visible_enabled(page.locator('button[name="SaveEdit"]'))
+        if save is None:
+            save = _visible_enabled(page.get_by_role("button", name="Save", exact=True))
+        if save is None:
+            raise PaperworkError("Salesforce inline Case editor did not expose its Save button.")
 
-        try:
-            edit_operation.wait_for(state="visible", timeout=12_000)
-        except Exception:
-            pass
+        _assert_salesforce_case_matches_bug(page, bug_number)
+        save.click(timeout=2_000)
+
+        # Event-driven settle: stop as soon as the visible editor disappears.
+        settle_deadline = time.monotonic() + 4.0
+        while time.monotonic() < settle_deadline:
+            if _visible_enabled(page.locator('button[name="SaveEdit"]')) is None:
+                break
+            page.wait_for_timeout(60)
 
         _open_salesforce_details_tab(page)
+        _assert_salesforce_case_matches_bug(page, bug_number)
 
-        # Verify the exact fields requested by the route. Assembly Component is
-        # intentionally not part of this verification.
-        deadline = time.monotonic() + 10.0
+        # Verify the whole authoritative route, not merely the fields that looked
+        # wrong before edit. This catches dependent-picklist side effects.
+        deadline = time.monotonic() + 5.0
         last_wrong: list[str] = []
         while time.monotonic() < deadline:
             wrong: list[str] = []
             for label, value in desired.items():
                 current = displayed_value(label)
                 if current != value:
-                    wrong.append(
-                        f"{label}={current!r}, expected {value!r}"
-                    )
+                    wrong.append(f"{label}={current!r}, expected {value!r}")
             if not wrong:
-                print(
-                    f"Saved and verified Salesforce routing fields for "
-                    f"bug {bug_number}."
-                )
+                print(f"Saved and verified complete Salesforce route for bug {bug_number}.")
                 return True
             last_wrong = wrong
-            page.wait_for_timeout(180)
+            page.wait_for_timeout(120)
 
         raise PaperworkError(
-            "Salesforce saved the Case fields, but verification failed: "
+            "Salesforce saved the Case route, but verification failed: "
             + "; ".join(last_wrong)
         )
 
@@ -2179,24 +2151,18 @@ def set_salesforce_case_fields(
         raise
     except Exception as error:
         raise PaperworkError(
-            f"Could not set Salesforce Case fields for bug "
-            f"{bug_number}: {error}"
+            f"Could not set Salesforce Case fields for bug {bug_number}: {error}"
         ) from error
 
-
 def get_salesforce_case_status(page: Any) -> str:
-    """Return the currently saved Salesforce Case Status from Details.
-
-    This reads the displayed value only and ignores the edit control label.
-    """
+    """Return Status from the active visible Salesforce Case only."""
     _open_salesforce_details_tab(page)
+    status_container = _visible_salesforce_field(
+        page, ("sfdc:RecordField.Case.Status",)
+    )
+    if status_container is None:
+        raise PaperworkError("Salesforce Case Status could not be determined.")
 
-    status_container = page.locator(
-        '[data-target-selection-name="sfdc:RecordField.Case.Status"]'
-    ).first
-    status_container.wait_for(state="visible", timeout=8_000)
-
-    # Prefer Salesforce output value nodes.
     for selector in (
         "lightning-formatted-text",
         ".test-id__field-value",
@@ -2208,34 +2174,18 @@ def get_salesforce_case_status(page: Any) -> str:
             try:
                 if node.is_visible():
                     value = " ".join(node.inner_text().split()).strip()
-                    if value and value.casefold() not in {
-                        "status",
-                        "edit status",
-                    }:
+                    if value and value.casefold() not in {"status", "edit status"}:
                         return value
             except Exception:
                 continue
-
-    # Text fallback.
     try:
-        lines = [
-            " ".join(line.split()).strip()
-            for line in status_container.inner_text().splitlines()
-            if " ".join(line.split()).strip()
-        ]
+        lines = [" ".join(x.split()).strip() for x in status_container.inner_text().splitlines() if " ".join(x.split()).strip()]
     except Exception as error:
-        raise PaperworkError(
-            f"Could not read the Salesforce Case Status: {error}"
-        ) from error
-
+        raise PaperworkError(f"Could not read the Salesforce Case Status: {error}") from error
     for line in lines:
-        lowered = line.casefold()
-        if lowered in {"status", "edit status"}:
-            continue
-        if lowered.startswith("edit "):
-            continue
-        return line
-
+        low = line.casefold()
+        if low not in {"status", "edit status"} and not low.startswith("edit "):
+            return line
     raise PaperworkError("Salesforce Case Status could not be determined.")
 
 
@@ -2340,20 +2290,12 @@ def close_salesforce_case(page: Any, bug_number: str) -> bool:
         ) from last_error
 
     try:
-        details_tab = first_visible(
-            [
-                page.locator('a[data-tab-value="detailTab"]').first,
-                page.locator('a[data-label="Details"]').first,
-                page.get_by_role("tab", name="Details", exact=True).first,
-                page.get_by_role("link", name="Details", exact=True).first,
-            ]
+        _open_salesforce_details_tab(page)
+        status_container = _visible_salesforce_field(
+            page, ("sfdc:RecordField.Case.Status",)
         )
-        details_tab.click()
-
-        status_container = page.locator(
-            '[data-target-selection-name="sfdc:RecordField.Case.Status"]'
-        ).first
-        status_container.wait_for(state="visible", timeout=8_000)
+        if status_container is None:
+            raise PaperworkError("Salesforce did not expose the active Case Status field.")
         if re.search(r"\bClosed\b", status_container.inner_text()):
             print(f"Salesforce Case for bug {bug_number} is already Closed.")
             return False
@@ -2438,9 +2380,21 @@ def close_salesforce_case(page: Any, bug_number: str) -> bool:
         _assert_salesforce_case_matches_bug(page, bug_number)
         save.click()
 
-        edit_status.wait_for(state="visible", timeout=12_000)
-        status_container.wait_for(state="visible", timeout=5_000)
-        if not re.search(r"\bClosed\b", status_container.inner_text()):
+        verify_deadline = time.monotonic() + 5.0
+        while time.monotonic() < verify_deadline:
+            status_container = _visible_salesforce_field(
+                page, ("sfdc:RecordField.Case.Status",)
+            )
+            if status_container is not None:
+                try:
+                    if re.search(r"\bClosed\b", status_container.inner_text()):
+                        break
+                except Exception:
+                    pass
+            page.wait_for_timeout(100)
+        else:
+            status_container = None
+        if status_container is None or not re.search(r"\bClosed\b", status_container.inner_text()):
             raise PaperworkError(
                 "Salesforce was saved, but the Case did not remain Closed. "
                 "Buganizer may still be updating Salesforce. Wait for the "
