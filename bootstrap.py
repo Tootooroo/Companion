@@ -16,7 +16,7 @@ VENV = ROOT / ".venv"
 STATE_FILE = VENV / ".mtv-bootstrap.json"
 REQUIREMENTS = ROOT / "requirements.txt"
 MIN_PYTHON = (3, 10)
-BOOTSTRAP_VERSION = 3
+BOOTSTRAP_VERSION = 4
 
 def die(message: str, code: int = 1) -> "None":
     print(f"\nERROR: {message}\n", file=sys.stderr)
@@ -107,14 +107,30 @@ def ensure_browser(py: Path) -> None:
     if chrome_likely_available():
         return
     if current.get("browser_installed"):
-        return
+        # State files can outlive a deleted Playwright browser cache. Verify the
+        # executable still exists before treating setup as complete.
+        probe = run(
+            [str(py), "-c",
+             "from playwright.sync_api import sync_playwright; "
+             "p=sync_playwright().start(); "
+             "path=p.chromium.executable_path; p.stop(); "
+             "import os,sys; sys.exit(0 if os.path.isfile(path) else 1)"],
+            check=False,
+        )
+        if probe.returncode == 0:
+            return
 
     print("\nNo system Google Chrome detected; installing private Playwright Chromium...")
-    result = run([str(py), "-m", "playwright", "install", "chromium"], check=False)
+    if sys.platform.startswith("linux"):
+        result = run([str(py), "-m", "playwright", "install", "--with-deps", "chromium"], check=False)
+        if result.returncode != 0:
+            result = run([str(py), "-m", "playwright", "install", "chromium"], check=False)
+    else:
+        result = run([str(py), "-m", "playwright", "install", "chromium"], check=False)
     if result.returncode != 0:
         if sys.platform.startswith("linux"):
             print(
-                "\nChromium downloaded but Linux system libraries may be missing.\n"
+                "\nLinux browser libraries may be missing.\n"
                 "On Debian/Ubuntu/ChromeOS Linux, run:\n"
                 f'  sudo "{py}" -m playwright install-deps chromium\n'
                 "then launch the Companion again."
@@ -126,11 +142,20 @@ def ensure_browser(py: Path) -> None:
     write_state(current)
 
 def main() -> None:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--setup-only", action="store_true")
+    args = parser.parse_args()
+
     os.chdir(ROOT)
     ensure_python()
     py = ensure_venv()
     ensure_packages(py)
     ensure_browser(py)
+
+    if args.setup_only:
+        print("\nMTV MAP Companion setup is complete.")
+        return
 
     print("\nStarting MTV MAP Companion...")
     print("Keep this window open while you use Paperwork on the map.\n")

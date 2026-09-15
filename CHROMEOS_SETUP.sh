@@ -2,13 +2,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 echo "MTV MAP Companion - ChromeOS Linux setup"
-echo "This runs inside ChromeOS Linux (Crostini), not in the ChromeOS shell."
+echo "=========================================="
+echo "This runs inside ChromeOS Linux (Crostini), not the ChromeOS shell."
+echo
 sudo apt-get update
 sudo apt-get install -y python3 python3-venv python3-pip
-python3 bootstrap.py || true
-if [ -x ".venv/bin/python" ]; then
-  sudo ".venv/bin/python" -m playwright install-deps chromium
-  ".venv/bin/python" -m playwright install chromium
-  echo
-  echo "Setup complete. Run ./START_COMPANION.sh"
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)' >/dev/null 2>&1; then
+  echo "Python 3.10 or newer is required in ChromeOS Linux." >&2; exit 1
 fi
+chmod +x START_COMPANION.sh CHROMEOS_SETUP.sh 2>/dev/null || true
+python3 bootstrap.py --setup-only
+echo; echo "Setup complete. Start Companion with: ./START_COMPANION.sh"

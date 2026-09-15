@@ -105,6 +105,16 @@ Open the extracted `Companion-main` folder and double-click:
 START_COMPANION.command
 ```
 
+### If macOS says you do not have appropriate access privileges
+
+A GitHub ZIP can occasionally extract the launcher without its executable permission. Open **Terminal**, change into the extracted `Companion-main` folder, and run:
+
+```bash
+chmod +x START_COMPANION.command START_COMPANION.sh CHROMEOS_SETUP.sh
+```
+
+Then double-click `START_COMPANION.command` again. This permission fix is separate from the Gatekeeper warning below.
+
 ### If macOS blocks it the first time
 
 A newly downloaded copy may show a warning that Apple cannot verify/check the file.
@@ -125,18 +135,6 @@ This should normally be required only the first time that downloaded copy is app
 
 Only approve the launcher if you intentionally downloaded it from the expected Companion repository.
 
-### If macOS says you do not have appropriate access privileges
-
-A GitHub ZIP download may sometimes extract `START_COMPANION.command` without executable permission. You may see a message saying the file could not be executed because you do not have appropriate access privileges.
-
-Open **Terminal**, change into the extracted `Companion-main` folder, and run:
-
-```bash
-chmod +x START_COMPANION.command
-```
-
-Then double-click `START_COMPANION.command` again. If macOS then shows the Apple verification warning, follow the **Privacy & Security → Open Anyway** steps above.
-
 ## 3. Let first-time setup finish
 
 A Terminal window opens.
@@ -155,7 +153,7 @@ Installing/updating Companion dependencies...
 
 This is normal. The Companion creates its own `.venv` and installs the required Python packages automatically.
 
-The first launch may take longer because dependencies or Chromium may need to download. **Do not close Terminal while setup is running.**
+The first launch may take longer because dependencies or Chromium may need to download. The launcher prefers an installed Google Chrome and otherwise installs a private Playwright Chromium. **Do not close Terminal while setup is running.**
 
 ## 4. Continue to First Launch & Sign-In
 
@@ -217,7 +215,9 @@ START_COMPANION.bat
 
 A Command Prompt window opens.
 
-If Windows displays a security warning, continue only if you downloaded the files from the expected Companion repository.
+If Windows displays a security warning, continue only if you downloaded the files from the expected Companion repository. If **Properties → General → Unblock** is available for the downloaded ZIP, you may unblock the official ZIP and extract it again. If Microsoft Defender SmartScreen or company policy does not provide an approved **Run anyway** option, do not bypass the policy; contact your administrator.
+
+The launcher now checks for Python automatically. If Python 3.10+ is missing and Windows Package Manager (`winget`) is available, it installs Python 3.12 for the current user. Otherwise it opens the official Python download page.
 
 ## 3. Let first-time setup finish
 
@@ -255,9 +255,11 @@ START_COMPANION.sh
 
 These commands are for Ubuntu/Debian-based Linux systems.
 
-## 1. Install Python support
+## 1. Python support
 
-Open Terminal and run:
+`START_COMPANION.sh` checks for Python 3.10+ automatically. On Debian/Ubuntu-based systems, if Python is missing it attempts to install `python3`, `python3-venv`, and `python3-pip` using `apt-get` and may ask for your sudo password.
+
+You can also install them manually:
 
 ```bash
 sudo apt update

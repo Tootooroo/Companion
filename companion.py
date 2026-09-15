@@ -1401,30 +1401,47 @@ class Workspace:
         bug_number = clean(snap["bug_number"])
         details = clean(snap.get("details"))
 
-        self.update_launch(
-            int(snap["session_id"]),
-            sf_phase="Checking Salesforce owner...",
-        )
-
-        # 1. Details -> current owner -> Change Owner only if necessary.
-        owner = claim_salesforce_case(self.sf_page, bug_number)
-        self.update_salesforce_progress(
-            owner=owner,
-            owner_claimed=True,
-        )
-
-        # 2. Feed -> same Details, skip exact duplicate.
-        if details:
+        # Owner and Details are one-time steps for this paperwork session.
+        # A second Complete is intentionally allowed after Buganizer's async
+        # Salesforce update. On that retry we must NOT repost the technician's
+        # Details or redo ownership; only re-assert the route/status below.
+        if snap.get("sf_owner_claimed"):
+            owner = clean(snap.get("sf_owner"))
+            print(
+                f"Salesforce Case owner for bug {bug_number} was already handled "
+                "during this paperwork session; skipping owner step."
+            )
+        else:
             self.update_launch(
                 int(snap["session_id"]),
-                sf_phase="Checking Salesforce Feed...",
+                sf_phase="Checking Salesforce owner...",
             )
-            post_salesforce_feed_comment(
-                self.sf_page,
-                bug_number,
-                details,
+            owner = claim_salesforce_case(self.sf_page, bug_number)
+            self.update_salesforce_progress(
+                owner=owner,
+                owner_claimed=True,
             )
-        self.update_salesforce_progress(description_saved=True)
+
+        if snap.get("sf_description_saved"):
+            if details:
+                print(
+                    f"Salesforce Details for bug {bug_number} were already posted "
+                    "during this paperwork session; skipping Feed step."
+                )
+        else:
+            if details:
+                self.update_launch(
+                    int(snap["session_id"]),
+                    sf_phase="Checking Salesforce Feed...",
+                )
+                post_salesforce_feed_comment(
+                    self.sf_page,
+                    bug_number,
+                    details,
+                )
+            # Mark the step complete even when Details is blank so retries never
+            # spend time revisiting a deliberately empty Feed step.
+            self.update_salesforce_progress(description_saved=True)
 
         # 3. Details -> only mismatched route fields -> save + verify.
         self.update_launch(
@@ -1490,27 +1507,44 @@ class Workspace:
         bug_number = clean(snap["bug_number"])
         details = clean(snap.get("details"))
 
-        self.update_launch(
-            int(snap["session_id"]),
-            sf_phase="Checking Salesforce owner...",
-        )
-        owner = claim_salesforce_case(self.sf_page, bug_number)
-        self.update_salesforce_progress(
-            owner=owner,
-            owner_claimed=True,
-        )
-
-        if details:
+        # Claim retries follow the same rule as Reassign retries: ownership and
+        # technician Details are one-time steps; route/status may be re-applied
+        # after Buganizer asynchronously updates Salesforce.
+        if snap.get("sf_owner_claimed"):
+            owner = clean(snap.get("sf_owner"))
+            print(
+                f"Salesforce Case owner for bug {bug_number} was already handled "
+                "during this paperwork session; skipping owner step."
+            )
+        else:
             self.update_launch(
                 int(snap["session_id"]),
-                sf_phase="Checking Salesforce Feed...",
+                sf_phase="Checking Salesforce owner...",
             )
-            post_salesforce_feed_comment(
-                self.sf_page,
-                bug_number,
-                details,
+            owner = claim_salesforce_case(self.sf_page, bug_number)
+            self.update_salesforce_progress(
+                owner=owner,
+                owner_claimed=True,
             )
-        self.update_salesforce_progress(description_saved=True)
+
+        if snap.get("sf_description_saved"):
+            if details:
+                print(
+                    f"Salesforce Details for bug {bug_number} were already posted "
+                    "during this paperwork session; skipping Feed step."
+                )
+        else:
+            if details:
+                self.update_launch(
+                    int(snap["session_id"]),
+                    sf_phase="Checking Salesforce Feed...",
+                )
+                post_salesforce_feed_comment(
+                    self.sf_page,
+                    bug_number,
+                    details,
+                )
+            self.update_salesforce_progress(description_saved=True)
 
         self.update_launch(
             int(snap["session_id"]),
