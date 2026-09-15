@@ -21,6 +21,7 @@ from paperwork import (
     SALESFORCE_CASES_URL,
     PaperworkError,
     _search_salesforce_case,
+    _assert_salesforce_case_matches_bug,
     claim_salesforce_case,
     close_salesforce_case,
     post_buganizer_comment_direct,
@@ -884,6 +885,11 @@ class Workspace:
 
             current = clean(page.url)
             if "/lightning/r/Case/" in current:
+                try:
+                    _assert_salesforce_case_matches_bug(page, bug_number)
+                except PaperworkError:
+                    page.wait_for_timeout(120)
+                    continue
                 self.update_launch(
                     sid,
                     sf_phase="Exact Salesforce ticket opened",
@@ -1136,6 +1142,11 @@ class Workspace:
                 sf_url=exact_sf_url,
             )
 
+            try:
+                self.trim_salesforce_workspace_tabs(keep=5)
+            except Exception:
+                pass
+
             # Keep Buganizer visible by default. Salesforce remains next to it as
             # a normal tab and can be clicked by the technician for reference.
             self.activate_ticket_tabs()
@@ -1311,36 +1322,57 @@ class Workspace:
         self,
         snap: dict[str, Any],
     ) -> None:
-        """Return the Salesforce tab to this workspace's exact Case."""
+        """Fail fast unless the active visible Salesforce Case is this bug.
+
+        Do not navigate or search here. The technician may keep older Salesforce
+        workspace tabs for reference; Complete must never silently switch Cases.
+        """
         if self.sf_page is None or not self.usable(self.sf_page):
             raise PaperworkError(
                 "Salesforce is not open. Press Begin again before continuing."
             )
+        bug_number = clean(snap.get("bug_number"))
+        _assert_salesforce_case_matches_bug(self.sf_page, bug_number)
 
-        exact_url = allowed_sf_url(clean(snap.get("sf_url")))
-        current = clean(self.sf_page.url)
-        if exact_url and current != exact_url:
-            self.sf_page.goto(
-                exact_url,
-                wait_until="domcontentloaded",
-                timeout=60_000,
+    def trim_salesforce_workspace_tabs(self, keep: int = 5) -> None:
+        """Best-effort cap for Salesforce Service Console Case workspace tabs."""
+        if self.sf_page is None or not self.usable(self.sf_page):
+            return
+        keep = max(1, int(keep))
+        # Workspace tabs have close buttons in the console tab strip. Work only
+        # with visible buttons and never close the selected/active tab.
+        for _ in range(8):
+            buttons = self.sf_page.locator(
+                'button[title^="Close "]:visible, button[aria-label^="Close "]:visible'
             )
-            current = clean(self.sf_page.url)
+            visible = []
+            for i in range(buttons.count()):
+                b = buttons.nth(i)
+                try:
+                    if b.is_visible() and b.is_enabled():
+                        visible.append(b)
+                except Exception:
+                    pass
+            # This list can include non-Case console tabs; only trim when clearly
+            # above the requested cap and close from the oldest/left side.
+            if len(visible) <= keep:
+                return
+            closed = False
+            for b in visible:
+                try:
+                    parent = b.locator('xpath=ancestor::*[@role="tab" or contains(@class,"tabItem")][1]')
+                    selected = parent.get_attribute("aria-selected") if parent.count() else None
+                    if selected == "true":
+                        continue
+                    b.click(timeout=800)
+                    self.sf_page.wait_for_timeout(80)
+                    closed = True
+                    break
+                except Exception:
+                    continue
+            if not closed:
+                return
 
-        if "/lightning/r/Case/" not in current:
-            if not snap.get("bug_number"):
-                raise PaperworkError(
-                    "The exact Salesforce Case is no longer available."
-                )
-            exact_url = self.open_exact_salesforce_case(
-                self.sf_page,
-                int(snap["session_id"]),
-                clean(snap["bug_number"]),
-            )
-            if not exact_url:
-                raise PaperworkError(
-                    "Could not return to the exact Salesforce Case."
-                )
 
     def execute_salesforce_reassign(
         self,
