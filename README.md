@@ -125,31 +125,6 @@ For download and setup instructions, see **[INSTALL.md](INSTALL.md)**.
 
 ---
 
-# Security and privacy
-
-The Companion is intentionally local.
-
-- It binds to `127.0.0.1`, not `0.0.0.0`.
-- Do not forward or expose port `8765`.
-- Do not distribute browser profiles.
-- Do not add passwords, cookies, tokens, or credentials to the repository.
-- Do not commit `.venv`.
-- Do not commit generated browser profiles.
-- Each person must authenticate using their own approved account.
-
-Files/folders that should not be committed or distributed include:
-
-```text
-.venv/
-__pycache__/
-*.pyc
-browser-profile/
-.spine-browser-profile/
-.env
-```
-
----
-
 # Normal user workflow
 
 After installation:
