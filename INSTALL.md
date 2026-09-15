@@ -125,6 +125,18 @@ This should normally be required only the first time that downloaded copy is app
 
 Only approve the launcher if you intentionally downloaded it from the expected Companion repository.
 
+### If macOS says you do not have appropriate access privileges
+
+A GitHub ZIP download may sometimes extract `START_COMPANION.command` without executable permission. You may see a message saying the file could not be executed because you do not have appropriate access privileges.
+
+Open **Terminal**, change into the extracted `Companion-main` folder, and run:
+
+```bash
+chmod +x START_COMPANION.command
+```
+
+Then double-click `START_COMPANION.command` again. If macOS then shows the Apple verification warning, follow the **Privacy & Security → Open Anyway** steps above.
+
 ## 3. Let first-time setup finish
 
 A Terminal window opens.
