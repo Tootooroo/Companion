@@ -13,9 +13,11 @@ first, intersect it with the desktop work area, and only then calculate halves.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 
 
@@ -223,6 +225,13 @@ def get_screen_layout() -> ScreenLayout | None:
     monitors arranged left/right or above/below.  Geometry is pixel-based; the
     physical diagonal size (14\", 27\", etc.) does not need special cases.
     """
+    # Never probe X11 tools on macOS/Windows.  A Mac can have XQuartz/xrandr
+    # installed; invoking those binaries can launch XQuartz even though the
+    # Companion does not need it.  Native macOS/Windows placement is handled
+    # by Chromium DevTools Protocol in companion.py.
+    if not sys.platform.startswith("linux") or not os.environ.get("DISPLAY"):
+        return None
+
     monitors = _xrandr_monitors()
     monitor = _choose_monitor(monitors)
     work_area = _desktop_work_area()
@@ -308,7 +317,9 @@ def tile_chrome_window() -> bool:
 
 
 def chrome_window_arguments() -> list[str]:
-    """Give Chrome monitor-aware initial bounds on Linux/X11."""
+    """Give Chrome monitor-aware initial bounds only on Linux/X11."""
+    if not sys.platform.startswith("linux") or not os.environ.get("DISPLAY"):
+        return []
     layout = get_screen_layout()
     arguments = [f"--class={CHROME_WINDOW_CLASS}"]
     if layout is None:

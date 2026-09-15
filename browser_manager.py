@@ -124,10 +124,14 @@ class BrowserManager:
                 CHROME_WINDOW_TITLE,
             )
 
-            for _ in range(30):
-                if tile_chrome_window():
-                    break
-                self.page.wait_for_timeout(100)
+            # Native macOS/Windows window placement is handled later by
+            # Companion through Chromium DevTools Protocol.  Only X11 Linux
+            # should invoke wmctrl/xdotool/xrandr helpers here.
+            if sys.platform.startswith("linux") and os.environ.get("DISPLAY"):
+                for _ in range(20):
+                    if tile_chrome_window():
+                        break
+                    self.page.wait_for_timeout(80)
 
         except subprocess.CalledProcessError as error:
             self.close()

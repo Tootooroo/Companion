@@ -607,6 +607,22 @@ class Workspace:
             except Exception:
                 pass
 
+    def park_browser(self) -> None:
+        """Minimize the managed ticket browser after Paperwork Exit.
+
+        Exit ends only the current robot workflow; it deliberately keeps the
+        persistent Playwright context alive for the next Begin.  Parking the
+        window makes that behavior clean on Windows/macOS/Linux instead of
+        leaving an otherwise-idle ticket window covering the user's map.
+        """
+        for page in (self.sf_page, self.bug_page):
+            try:
+                if self.usable(page):
+                    self.set_managed_window_state(page, "minimized")
+                    return
+            except Exception:
+                continue
+
     def ensure_browser(self) -> None:
         """
         Ensure the persistent browser context is alive.
@@ -927,8 +943,15 @@ class Workspace:
         if split_x <= 0 or split_x >= screen_width:
             split_x = screen_width // 2
 
+        # The Map supplies the usable display rectangle from the browser that
+        # initiated Begin.  Clamp the split to that rectangle and use integer
+        # outer-window bounds so DPI scaling/resolution do not require hardcoded
+        # monitor-size profiles.
+        split_x = max(1, min(split_x, screen_width - 1))
         right_width = max(420, screen_width - split_x)
-        right_left = left + split_x
+        if right_width > screen_width:
+            right_width = screen_width
+        right_left = left + (screen_width - right_width)
 
         try:
             assert self.browser is not None
@@ -1710,6 +1733,9 @@ def reset_workspace() -> None:
     tabs may be reused on the next Begin, and manually closed tabs are recreated.
     """
     WORKSPACE.invalidate_session()
+    # Playwright calls must stay on the dedicated browser worker.  Keep the
+    # authenticated context alive for the next robot, but hide its window.
+    BROWSER_WORKER.submit(WORKSPACE.park_browser, wait=False)
 
 
 def render_startup_page() -> str:
