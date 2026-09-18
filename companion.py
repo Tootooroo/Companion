@@ -460,10 +460,9 @@ class Workspace:
         except Exception as error:
             print(f"Could not set paperwork browser state to {state}: {error}")
         finally:
-            # Windows/macOS already behave correctly through CDP. Linux desktop
-            # normally does too, but ChromeOS Crostini can leave the host window
-            # minimized even after Chromium reports "normal". Use the native
-            # Linux/XWayland bridge only as a platform fallback.
+            # Keep the proven Windows/macOS path untouched. Linux desktop and
+            # ChromeOS Crostini get a native fallback only when CDP/window-state
+            # propagation is insufficient.
             if platform.system().lower() == "linux":
                 try:
                     if state == "normal":
@@ -1047,21 +1046,16 @@ class Workspace:
             # Window tiling is UI polish, not a reason to fail paperwork.
             print(f"Could not tile ticket window with Chromium bounds: {error}")
 
-        # Linux uses the SAME map-supplied geometry as Windows/macOS.  CDP is
-        # attempted first above.  Then, if an X11/XWayland window is available,
-        # apply those exact bounds natively.  This is critical for ChromeOS
-        # Crostini/Sommelier, whose host compositor can ignore CDP positioning.
-        # Only if exact native placement is unavailable do we fall back to the
-        # monitor-aware Linux half-screen helper.
+        # Linux must follow the exact same map-supplied split as Windows/macOS.
+        # Apply native X11/XWayland bounds only as a Linux/Crostini fallback.
         if platform.system().lower() == "linux":
-            native_exact = False
             try:
-                native_exact = move_chrome_window_to_bounds(
+                native_ok = move_chrome_window_to_bounds(
                     right_left, top, right_width, screen_height
                 )
             except Exception:
-                native_exact = False
-            if not native_exact:
+                native_ok = False
+            if not native_ok:
                 try:
                     tile_chrome_window()
                 except Exception:
