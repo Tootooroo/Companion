@@ -472,6 +472,21 @@ class Workspace:
                 except Exception:
                     pass
 
+    def show_managed_page(self, page: Any) -> None:
+        """Restore the managed browser and make this exact tab visible.
+
+        This makes Windows/Linux/ChromeOS follow the same visible workflow as
+        macOS: the technician sees whichever external system is currently being
+        opened, searched, verified, or edited. No artificial delay is added.
+        """
+        if not self.usable(page):
+            return
+        self.set_managed_window_state(page, "normal")
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
+
     def bootstrap_companion(self) -> None:
         """
         Preflight authentication before the first Begin.
@@ -901,6 +916,7 @@ class Workspace:
             sid,
             sf_phase=f"Searching Salesforce for bug {bug_number}...",
         )
+        self.show_managed_page(page)
 
         last_error: Exception | None = None
         for attempt in range(1, 5):
@@ -1096,6 +1112,7 @@ class Workspace:
             if not self.usable(self.bug_page):
                 self.bug_page = self.new_page()
 
+            self.show_managed_page(self.bug_page)
             try:
                 self.bug_page.goto(
                     bug_url,
@@ -1108,6 +1125,7 @@ class Workspace:
                 self.close_browser()
                 self.ensure_browser()
                 self.bug_page = self.new_page()
+                self.show_managed_page(self.bug_page)
                 self.bug_page.goto(
                     bug_url,
                     wait_until="domcontentloaded",
@@ -1122,6 +1140,7 @@ class Workspace:
             # Authentication can redirect away from the requested issue. Re-open
             # the exact bug after sign-in so first use and expired sessions are safe.
             if bug_number not in clean(self.bug_page.url):
+                self.show_managed_page(self.bug_page)
                 self.bug_page.goto(
                     bug_url,
                     wait_until="domcontentloaded",
@@ -1145,6 +1164,7 @@ class Workspace:
                 sid,
                 sf_phase="Opening Salesforce...",
             )
+            self.show_managed_page(self.sf_page)
 
             # If the master sheet already supplied an exact Salesforce URL, use
             # it. Otherwise start from Cases. On first use this may redirect to
@@ -1174,6 +1194,7 @@ class Workspace:
                     sid,
                     sf_phase="Opening exact Salesforce ticket...",
                 )
+                self.show_managed_page(self.sf_page)
                 self.sf_page.goto(
                     sf_url,
                     wait_until="domcontentloaded",
@@ -1327,6 +1348,7 @@ class Workspace:
         optional Details are still posted.
         """
         snap = self.snapshot()
+        self.show_managed_page(self.bug_page)
         self._ensure_exact_buganizer_issue(snap)
 
         details = clean(details)
@@ -1461,11 +1483,7 @@ class Workspace:
         self._ensure_salesforce_case_for_commit(snap)
         assert self.sf_page is not None
 
-        self.set_managed_window_state(self.sf_page, "normal")
-        try:
-            self.sf_page.bring_to_front()
-        except Exception:
-            pass
+        self.show_managed_page(self.sf_page)
 
         bug_number = clean(snap["bug_number"])
         details = clean(snap.get("details"))
@@ -1567,11 +1585,7 @@ class Workspace:
         self._ensure_salesforce_case_for_commit(snap)
         assert self.sf_page is not None
 
-        self.set_managed_window_state(self.sf_page, "normal")
-        try:
-            self.sf_page.bring_to_front()
-        except Exception:
-            pass
+        self.show_managed_page(self.sf_page)
 
         bug_number = clean(snap["bug_number"])
         details = clean(snap.get("details"))
