@@ -38,7 +38,12 @@ from salesforce_routes import (
     resolve_reassign_route,
 )
 from browser_manager import BrowserManager
-from window_layout import tile_chrome_window
+from window_layout import (
+    minimize_chrome_window,
+    move_chrome_window_to_bounds,
+    restore_chrome_window,
+    tile_chrome_window,
+)
 
 
 HOST = "127.0.0.1"
@@ -454,6 +459,19 @@ class Workspace:
             )
         except Exception as error:
             print(f"Could not set paperwork browser state to {state}: {error}")
+        finally:
+            # Windows/macOS already behave correctly through CDP. Linux desktop
+            # normally does too, but ChromeOS Crostini can leave the host window
+            # minimized even after Chromium reports "normal". Use the native
+            # Linux/XWayland bridge only as a platform fallback.
+            if platform.system().lower() == "linux":
+                try:
+                    if state == "normal":
+                        restore_chrome_window()
+                    elif state == "minimized":
+                        minimize_chrome_window()
+                except Exception:
+                    pass
 
     def bootstrap_companion(self) -> None:
         """
@@ -962,10 +980,8 @@ class Workspace:
         # outer-window bounds so DPI scaling/resolution do not require hardcoded
         # monitor-size profiles.
         split_x = max(1, min(split_x, screen_width - 1))
-        right_width = max(420, screen_width - split_x)
-        if right_width > screen_width:
-            right_width = screen_width
-        right_left = left + (screen_width - right_width)
+        right_width = max(1, screen_width - split_x)
+        right_left = left + split_x
 
         try:
             assert self.browser is not None
@@ -1031,15 +1047,25 @@ class Workspace:
             # Window tiling is UI polish, not a reason to fail paperwork.
             print(f"Could not tile ticket window with Chromium bounds: {error}")
 
-        # ChromeOS/Crostini and some Linux window managers may accept the CDP
-        # restore but ignore its position/size.  Re-apply the same right-half
-        # placement through the existing X11 helper when available.  This is a
-        # no-op on macOS/Windows and keeps their proven behavior unchanged.
+        # Linux uses the SAME map-supplied geometry as Windows/macOS.  CDP is
+        # attempted first above.  Then, if an X11/XWayland window is available,
+        # apply those exact bounds natively.  This is critical for ChromeOS
+        # Crostini/Sommelier, whose host compositor can ignore CDP positioning.
+        # Only if exact native placement is unavailable do we fall back to the
+        # monitor-aware Linux half-screen helper.
         if platform.system().lower() == "linux":
+            native_exact = False
             try:
-                tile_chrome_window()
+                native_exact = move_chrome_window_to_bounds(
+                    right_left, top, right_width, screen_height
+                )
             except Exception:
-                pass
+                native_exact = False
+            if not native_exact:
+                try:
+                    tile_chrome_window()
+                except Exception:
+                    pass
 
     def activate_ticket_tabs(self) -> None:
         """Keep Buganizer and Salesforce available as two tabs in one window."""

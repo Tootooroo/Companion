@@ -3,6 +3,15 @@ set -u
 cd "$(dirname "$0")"
 echo "MTV MAP Companion"
 echo "================="
+
+# Optional native window helpers make restore/split behavior identical on Linux
+# window managers that ignore Chromium DevTools bounds. ChromeOS setup installs
+# these automatically. Normal Linux can still run through CDP without them.
+if [ -n "${DISPLAY:-}" ] && { ! command -v wmctrl >/dev/null 2>&1 || ! command -v xdotool >/dev/null 2>&1; }; then
+  echo
+  echo "Note: wmctrl/xdotool are not installed. Companion will use Chromium window controls."
+  echo "For the strongest Linux window placement support: sudo apt install wmctrl xdotool x11-xserver-utils"
+fi
 find_python() {
   local p
   for p in python3.14 python3.13 python3.12 python3.11 python3.10 python3; do

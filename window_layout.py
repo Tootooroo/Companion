@@ -332,6 +332,117 @@ def chrome_window_arguments() -> list[str]:
     ]
 
 
+
+def _chrome_window_targets() -> list[tuple[str, bool]]:
+    """Return stable Chrome selectors for Linux/X11/Crostini.
+
+    ChromeOS Crostini normally exposes Linux GUI apps through Sommelier/XWayland.
+    The window title can change as tabs navigate, so prefer the stable --class
+    supplied at browser launch and retain the title as a compatibility fallback.
+    """
+    return [
+        (CHROME_WINDOW_CLASS, True),
+        (CHROME_WINDOW_TITLE, False),
+    ]
+
+
+def restore_chrome_window() -> bool:
+    """Best-effort native restore/raise for Linux and ChromeOS Crostini.
+
+    CDP is authoritative on normal desktop Chromium, but ChromeOS' host window
+    manager can leave a Crostini browser minimized even after CDP reports
+    windowState=normal.  wmctrl/xdotool operate on the mapped Linux window and
+    bridge that gap.  This function is a no-op off Linux/X11.
+    """
+    if not sys.platform.startswith("linux") or not os.environ.get("DISPLAY"):
+        return False
+    if not shutil.which("wmctrl"):
+        return False
+
+    for target, by_class in _chrome_window_targets():
+        selector = ["-x"] if by_class else []
+        try:
+            subprocess.run(
+                ["wmctrl", *selector, "-r", target, "-b", "remove,hidden"],
+                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=2,
+            )
+            subprocess.run(
+                ["wmctrl", *selector, "-r", target, "-b",
+                 "remove,maximized_vert,maximized_horz,fullscreen"],
+                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=2,
+            )
+            subprocess.run(
+                ["wmctrl", *selector, "-a", target],
+                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                timeout=2,
+            )
+            return True
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return False
+
+
+def minimize_chrome_window() -> bool:
+    """Best-effort native minimize for Linux/Crostini."""
+    if not sys.platform.startswith("linux") or not os.environ.get("DISPLAY"):
+        return False
+    if not shutil.which("xdotool"):
+        return False
+
+    # Find by class first because the visible tab changes the window title.
+    try:
+        ids = _run_text(
+            ["xdotool", "search", "--onlyvisible", "--class", CHROME_WINDOW_CLASS]
+        ).split()
+        if not ids:
+            ids = _run_text(
+                ["xdotool", "search", "--onlyvisible", "--name", CHROME_WINDOW_TITLE]
+            ).split()
+        if not ids:
+            return False
+        subprocess.run(
+            ["xdotool", "windowminimize", ids[-1]],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=2,
+        )
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def move_chrome_window_to_bounds(
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+) -> bool:
+    """Restore and place managed Chrome at exact map-supplied bounds on Linux.
+
+    This mirrors the CDP geometry used on Windows/macOS.  It is especially
+    useful under ChromeOS Crostini where the host compositor may ignore CDP
+    position/restore requests while still exposing the Linux window through
+    XWayland/Sommelier.
+    """
+    if not sys.platform.startswith("linux") or not os.environ.get("DISPLAY"):
+        return False
+    if width < 200 or height < 200:
+        return False
+
+    restore_chrome_window()
+    geometry = (int(x), int(y), int(width), int(height))
+    for target, by_class in _chrome_window_targets():
+        if _move_window(
+            target,
+            geometry,
+            identify_by_id=False,
+            identify_by_class=by_class,
+        ):
+            return True
+    return False
+
+
 def _move_window(
     target: str,
     geometry: tuple[int, int, int, int],
