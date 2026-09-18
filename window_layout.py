@@ -21,8 +21,6 @@ import sys
 import time
 
 
-ASSISTANT_TERMINAL_TITLE = "MTV MAP Companion"
-COMMAND_TERMINAL_TITLE = "MTV MAP Companion Commands"
 CHROME_WINDOW_CLASS = "mtv-map-companion-chrome"
 CHROME_WINDOW_TITLE = "MTV MAP Companion Browser"
 
@@ -73,11 +71,6 @@ class ScreenLayout:
         return Rect(self.x, self.y, self.width, self.height)
 
     @property
-    def left(self) -> tuple[int, int, int, int]:
-        left_width = self.width // 2
-        return (self.x, self.y, left_width, self.height)
-
-    @property
     def right(self) -> tuple[int, int, int, int]:
         left_width = self.width // 2
         return (
@@ -92,18 +85,6 @@ class ScreenLayout:
         # Initial browser placement. Paperwork later refines this using the
         # exact display geometry reported by the Map.
         return self.right
-
-    @property
-    def commands(self) -> tuple[int, int, int, int]:
-        left_width = self.width // 2
-        top_height = self.height // 2
-        return (
-            self.x + left_width,
-            self.y + top_height,
-            self.width - left_width,
-            self.height - top_height,
-        )
-
 
 def _run_text(command: list[str], timeout: float = 2.0) -> str:
     return subprocess.check_output(
@@ -218,45 +199,6 @@ def _choose_monitor(monitors: list[Rect]) -> Rect | None:
     return monitors[0]
 
 
-
-def is_chromeos_crostini() -> bool:
-    """True only inside ChromeOS Linux/Crostini, not on a normal Linux desktop."""
-    if not sys.platform.startswith("linux"):
-        return False
-    return bool(
-        os.environ.get("SOMMELIER_VERSION")
-        or os.environ.get("CROS_USER_ID_HASH")
-        or os.path.exists("/dev/.cros_milestone")
-        or os.path.isdir("/mnt/chromeos")
-    )
-
-
-def chromeos_snap_right() -> bool:
-    """Ask the ChromeOS host compositor to snap the active Crostini window right.
-
-    Crostini does not expose ChromeOS' host window through the normal X11 EWMH
-    client list.  Sommelier *does*, however, reserve Alt+] as a ChromeOS host
-    accelerator for snapping the active Linux window to the right half.
-
-    This deliberately uses the host shortcut rather than wmctrl geometry.
-    """
-    if not is_chromeos_crostini() or not os.environ.get("DISPLAY"):
-        return False
-    if not shutil.which("xdotool"):
-        return False
-    try:
-        subprocess.run(
-            ["xdotool", "key", "--clearmodifiers", "alt+bracketright"],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=2,
-        )
-        return True
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
 def get_screen_layout() -> ScreenLayout | None:
     """Return the usable rectangle of one physical X11 display.
 
@@ -313,31 +255,6 @@ def get_screen_layout() -> ScreenLayout | None:
             pass
 
     return None
-
-
-def tile_active_assistant_window() -> bool:
-    """Fill the left half of the active monitor with the active terminal."""
-    layout = get_screen_layout()
-    if layout is None or not shutil.which("wmctrl") or not shutil.which("xdotool"):
-        return False
-    try:
-        window_id = _run_text(["xdotool", "getactivewindow"]).strip()
-        subprocess.run(
-            ["xdotool", "set_window", "--name", ASSISTANT_TERMINAL_TITLE, window_id],
-            check=True,
-            timeout=2,
-        )
-        return _move_window(window_id, layout.left, identify_by_id=True)
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
-def tile_command_terminal() -> bool:
-    """Fill the bottom-right quadrant of the active monitor."""
-    layout = get_screen_layout()
-    if layout is None:
-        return False
-    return _move_window(COMMAND_TERMINAL_TITLE, layout.commands, identify_by_id=False)
 
 
 def tile_chrome_window() -> bool:
