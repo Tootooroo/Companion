@@ -333,39 +333,97 @@ def chrome_window_arguments() -> list[str]:
 
 
 
-def _managed_chrome_targets() -> list[tuple[str, bool]]:
-    """Stable selectors for the one Playwright-managed Chrome window."""
-    return [(CHROME_WINDOW_CLASS, True), (CHROME_WINDOW_TITLE, False)]
+def _chrome_window_ids() -> list[str]:
+    """Find the managed Chrome X11/XWayland window, including minimized windows.
+
+    Crostini/Sommelier does not always preserve Chromium's custom WM_CLASS on the
+    host-visible window.  A minimized window also disappears from xdotool's
+    --onlyvisible search.  Enumerate all top-level windows and accept the stable
+    class/title first, then a conservative Chrome/Chromium fallback.
+    """
+    if not sys.platform.startswith("linux") or not os.environ.get("DISPLAY"):
+        return []
+    ids: list[str] = []
+    if shutil.which("xdotool"):
+        searches = [
+            ["xdotool", "search", "--class", CHROME_WINDOW_CLASS],
+            ["xdotool", "search", "--name", CHROME_WINDOW_TITLE],
+        ]
+        for command in searches:
+            try:
+                for wid in _run_text(command, timeout=1).split():
+                    if wid not in ids:
+                        ids.append(wid)
+            except (OSError, subprocess.SubprocessError):
+                pass
+    if ids:
+        return ids
+
+    # ChromeOS Crostini fallback: Sommelier may expose google-chrome/Google-chrome
+    # or chromium/Chromium instead of the requested --class. Use wmctrl's complete
+    # window list (which includes minimized windows), preferring the newest match.
+    if shutil.which("wmctrl"):
+        try:
+            output = _run_text(["wmctrl", "-lx"], timeout=1)
+            candidates=[]
+            for line in output.splitlines():
+                parts=line.split(None,4)
+                if len(parts)<4:
+                    continue
+                wid=parts[0]
+                blob=line.casefold()
+                if any(token in blob for token in (
+                    CHROME_WINDOW_CLASS.casefold(),
+                    "google-chrome", "google_chrome", "chromium", "chrome.chrome"
+                )):
+                    candidates.append(wid)
+            ids.extend(reversed(candidates))
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return ids
+
+
+def _wmctrl_window_id(window_id: str) -> str:
+    """Convert xdotool's decimal id to wmctrl's hexadecimal id form."""
+    try:
+        return hex(int(window_id, 0))
+    except ValueError:
+        return window_id
 
 
 def restore_chrome_window() -> bool:
     """Restore/raise managed Chrome on Linux/X11/Crostini only."""
     if not sys.platform.startswith("linux") or not os.environ.get("DISPLAY"):
         return False
-    if not shutil.which("wmctrl"):
+    ids=_chrome_window_ids()
+    if not ids:
         return False
-    for target, by_class in _managed_chrome_targets():
-        selector = ["-x"] if by_class else []
-        try:
-            subprocess.run(
-                ["wmctrl", *selector, "-r", target, "-b", "remove,hidden"],
-                check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=1,
-            )
-            subprocess.run(
-                ["wmctrl", *selector, "-r", target, "-b",
-                 "remove,maximized_vert,maximized_horz,fullscreen"],
-                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=1,
-            )
-            subprocess.run(
-                ["wmctrl", *selector, "-a", target],
-                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                timeout=1,
-            )
+    ok=False
+    for wid in reversed(ids):
+        # xdotool's windowmap is important on Crostini: after minimizing, the
+        # Sommelier/XWayland window can be unmapped, so CDP 'normal' alone does
+        # not make it visible again.
+        if shutil.which("xdotool"):
+            try:
+                subprocess.run(["xdotool", "windowmap", wid], check=False,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
+                subprocess.run(["xdotool", "windowraise", wid], check=False,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
+                ok=True
+            except (OSError, subprocess.SubprocessError):
+                pass
+        if shutil.which("wmctrl"):
+            try:
+                hx=_wmctrl_window_id(wid)
+                subprocess.run(["wmctrl", "-i", "-r", hx, "-b", "remove,hidden,maximized_vert,maximized_horz,fullscreen"],
+                               check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
+                subprocess.run(["wmctrl", "-i", "-a", hx], check=False,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
+                ok=True
+            except (OSError, subprocess.SubprocessError):
+                pass
+        if ok:
             return True
-        except (OSError, subprocess.SubprocessError):
-            continue
     return False
 
 
@@ -375,34 +433,31 @@ def minimize_chrome_window() -> bool:
         return False
     if not shutil.which("xdotool"):
         return False
-    for target, by_class in _managed_chrome_targets():
-        try:
-            flag = "--class" if by_class else "--name"
-            ids = _run_text(["xdotool", "search", "--onlyvisible", flag, target], timeout=1).split()
-            if not ids:
-                continue
-            subprocess.run(
-                ["xdotool", "windowminimize", ids[-1]], check=True,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1,
-            )
-            return True
-        except (OSError, subprocess.SubprocessError):
-            continue
-    return False
+    ids=_chrome_window_ids()
+    if not ids:
+        return False
+    try:
+        subprocess.run(["xdotool", "windowminimize", ids[-1]], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def move_chrome_window_to_bounds(x: int, y: int, width: int, height: int) -> bool:
     """Apply exact map-supplied bounds to managed Chrome on Linux/Crostini."""
     if not sys.platform.startswith("linux") or not os.environ.get("DISPLAY"):
         return False
-    geometry = (int(x), int(y), int(width), int(height))
+    geometry=(int(x),int(y),int(width),int(height))
     if geometry[2] < 200 or geometry[3] < 200:
         return False
     restore_chrome_window()
-    for target, by_class in _managed_chrome_targets():
-        if _move_window(target, geometry, identify_by_id=False, identify_by_class=by_class):
-            return True
-    return False
+    ids=_chrome_window_ids()
+    if not ids:
+        return False
+    # Address the exact window by id. This avoids Crostini WM_CLASS/title
+    # translation and makes placement deterministic after restore.
+    return _move_window(ids[-1], geometry, identify_by_id=True)
 
 
 def _move_window(
