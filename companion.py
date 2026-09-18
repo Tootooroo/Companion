@@ -38,6 +38,7 @@ from salesforce_routes import (
     resolve_reassign_route,
 )
 from browser_manager import BrowserManager
+from window_layout import tile_chrome_window
 
 
 HOST = "127.0.0.1"
@@ -582,6 +583,19 @@ class Workspace:
                 except Exception:
                     pass
 
+                # Reloading the local control tab can steal focus on some Chromium
+                # builds (notably macOS/ChromeOS).  Authentication must remain the
+                # visible page until the user has actually finished signing in.
+                try:
+                    if not bug_ready and self.usable(self.bug_page):
+                        self.set_managed_window_state(self.bug_page, "normal")
+                        self.bug_page.bring_to_front()
+                    elif not sf_ready and self.usable(self.sf_page):
+                        self.set_managed_window_state(self.sf_page, "normal")
+                        self.sf_page.bring_to_front()
+                except Exception:
+                    pass
+
                 active = self.sf_page if self.usable(self.sf_page) else self.bug_page
                 active.wait_for_timeout(350)
 
@@ -1015,7 +1029,17 @@ class Workspace:
                 pass
         except Exception as error:
             # Window tiling is UI polish, not a reason to fail paperwork.
-            print(f"Could not tile ticket window: {error}")
+            print(f"Could not tile ticket window with Chromium bounds: {error}")
+
+        # ChromeOS/Crostini and some Linux window managers may accept the CDP
+        # restore but ignore its position/size.  Re-apply the same right-half
+        # placement through the existing X11 helper when available.  This is a
+        # no-op on macOS/Windows and keeps their proven behavior unchanged.
+        if platform.system().lower() == "linux":
+            try:
+                tile_chrome_window()
+            except Exception:
+                pass
 
     def activate_ticket_tabs(self) -> None:
         """Keep Buganizer and Salesforce available as two tabs in one window."""
@@ -1170,8 +1194,10 @@ class Workspace:
             except Exception:
                 pass
 
-            # Keep Buganizer visible by default. Salesforce remains next to it as
-            # a normal tab and can be clicked by the technician for reference.
+            # Authentication/SSO redirects can restore or resize Chromium on
+            # ChromeOS/Linux.  Apply the requested split one final time after both
+            # records are ready, then keep Buganizer visible by default.
+            self.tile_ticket_window(self.bug_page, sid)
             self.activate_ticket_tabs()
             self.update_launch(sid, opening=False)
 

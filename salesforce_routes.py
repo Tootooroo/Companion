@@ -117,6 +117,7 @@ _FORM_SPECS: dict[str, dict[str, Any]] = {
                 "options": [
                     "Robot Positioning / Locomotion",
                     "Evaluation / Autonomous Behavior",
+                    "Data Collection / Teleoperation",
                 ],
             },
             {
@@ -130,6 +131,7 @@ _FORM_SPECS: dict[str, dict[str, Any]] = {
                     "Orca",
                     "Tracking/IK",
                     "Unknown Software",
+                    "Falls",
                 ],
             },
         ],
@@ -285,6 +287,7 @@ def resolve_reassign_route(
             [
                 "Robot Positioning / Locomotion",
                 "Evaluation / Autonomous Behavior",
+                "Data Collection / Teleoperation",
             ],
             "Operation",
         )
@@ -299,9 +302,19 @@ def resolve_reassign_route(
                 "Orca",
                 "Tracking/IK",
                 "Unknown Software",
+                "Falls",
             ],
             "Sub Category",
         )
+
+        if sub_category == "Falls":
+            return SalesforceCaseFields(
+                operation=operation,
+                case_type="Collision",
+                sub_category=sub_category,
+                resolution_reason="MERGED-CLOSED",
+            )
+
         return SalesforceCaseFields(
             operation=operation,
             case_type="Software",
@@ -485,6 +498,7 @@ _CLAIM_NON_HARDWARE = {
         "Isaac Agent / Disk Space": "Resolved",
         "Locomotion Failure": "Resolved",
         "Operator Error": "Resolved",
+        "Orca": "Resolved",
         "Shem": "Resolved",
         "Wrist Cameras": "Recalibration",
     },
@@ -495,7 +509,9 @@ _CLAIM_NON_HARDWARE = {
         "Operator Error": "Resolved",
     },
     "Field Service Request": {
+        "Calibration": "Resolved",
         "Investigation": "Resolved",
+        "Preventative Maintanence": "Resolved",
     },
     "IT": {
         "Network": "Resolved",
