@@ -333,74 +333,6 @@ def chrome_window_arguments() -> list[str]:
 
 
 
-
-def is_chromeos_crostini() -> bool:
-    """Return True only for a ChromeOS Linux/Crostini session.
-
-    Normal Linux desktops must keep their existing minimize/restore behavior.
-    Crostini is identified using ChromeOS/Sommelier-specific environment/files.
-    """
-    if not sys.platform.startswith("linux"):
-        return False
-    if os.environ.get("SOMMELIER_VERSION"):
-        return True
-    if os.environ.get("CROS_USER_ID_HASH"):
-        return True
-    if os.path.exists("/dev/.cros_milestone"):
-        return True
-    if os.path.isdir("/mnt/chromeos"):
-        return True
-    return False
-
-
-def park_chrome_window() -> bool:
-    """Push managed Chromium behind other windows without minimizing it.
-
-    ChromeOS/Crostini can reliably minimize a Linux window but does not reliably
-    remap it when Chromium later requests windowState=normal. Keeping the window
-    mapped avoids that compositor edge case. If Chromium is the only visible
-    window, lowering it naturally leaves it visible.
-    """
-    if not is_chromeos_crostini() or not os.environ.get("DISPLAY"):
-        return False
-
-    ids = _chrome_window_ids()
-    if not ids:
-        return False
-
-    window_id = ids[-1]
-    lowered = False
-
-    if shutil.which("xdotool"):
-        try:
-            subprocess.run(
-                ["xdotool", "windowlower", window_id],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=1,
-            )
-            lowered = True
-        except (OSError, subprocess.SubprocessError):
-            pass
-
-    # EWMH "below" is a harmless additional hint where Sommelier honors it.
-    if shutil.which("wmctrl"):
-        try:
-            subprocess.run(
-                ["wmctrl", "-i", "-r", _wmctrl_window_id(window_id), "-b", "add,below"],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=1,
-            )
-            lowered = True
-        except (OSError, subprocess.SubprocessError):
-            pass
-
-    return lowered
-
-
 def _chrome_window_ids() -> list[str]:
     """Find the managed Chrome X11/XWayland window, including minimized windows.
 
@@ -483,7 +415,7 @@ def restore_chrome_window() -> bool:
         if shutil.which("wmctrl"):
             try:
                 hx=_wmctrl_window_id(wid)
-                subprocess.run(["wmctrl", "-i", "-r", hx, "-b", "remove,hidden,below,maximized_vert,maximized_horz,fullscreen"],
+                subprocess.run(["wmctrl", "-i", "-r", hx, "-b", "remove,hidden,maximized_vert,maximized_horz,fullscreen"],
                                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
                 subprocess.run(["wmctrl", "-i", "-a", hx], check=False,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)

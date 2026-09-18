@@ -39,10 +39,8 @@ from salesforce_routes import (
 )
 from browser_manager import BrowserManager
 from window_layout import (
-    is_chromeos_crostini,
     minimize_chrome_window,
     move_chrome_window_to_bounds,
-    park_chrome_window,
     restore_chrome_window,
     tile_chrome_window,
 )
@@ -444,25 +442,7 @@ class Workspace:
                 self.startup_sf_authenticated = sf_authenticated
 
     def set_managed_window_state(self, page: Any, state: str) -> None:
-        """Best-effort managed Chrome window state.
-
-        Windows/macOS/normal Linux retain the proven minimize/restore behavior.
-        ChromeOS Crostini deliberately never minimizes the Linux Chromium window:
-        it is lowered/parked instead so Sommelier never has to remap it later.
-        """
-        crostini = False
-        try:
-            crostini = is_chromeos_crostini()
-        except Exception:
-            crostini = False
-
-        if crostini and state == "minimized":
-            try:
-                park_chrome_window()
-            except Exception as error:
-                print(f"Could not park ChromeOS paperwork browser: {error}")
-            return
-
+        """Best-effort minimize/restore for the managed Chrome window."""
         try:
             assert self.browser is not None
             cdp = self.browser.context.new_cdp_session(page)
@@ -480,13 +460,14 @@ class Workspace:
         except Exception as error:
             print(f"Could not set paperwork browser state to {state}: {error}")
         finally:
-            # Normal Linux keeps its existing native fallback. Crostini restore
-            # also raises the still-mapped window and removes the "below" hint.
+            # Keep the proven Windows/macOS path untouched. Linux desktop and
+            # ChromeOS Crostini get a native fallback only when CDP/window-state
+            # propagation is insufficient.
             if platform.system().lower() == "linux":
                 try:
                     if state == "normal":
                         restore_chrome_window()
-                    elif state == "minimized" and not crostini:
+                    elif state == "minimized":
                         minimize_chrome_window()
                 except Exception:
                     pass
@@ -673,11 +654,12 @@ class Workspace:
                 pass
 
     def park_browser(self) -> None:
-        """Hide/park the managed ticket browser after Paperwork Exit.
+        """Minimize the managed ticket browser after Paperwork Exit.
 
-        Windows/macOS/normal Linux minimize exactly as before. ChromeOS/Crostini
-        keeps Chromium mapped and pushes it behind other windows so Begin can
-        reliably raise and split-screen it again.
+        Exit ends only the current robot workflow; it deliberately keeps the
+        persistent Playwright context alive for the next Begin.  Parking the
+        window makes that behavior clean on Windows/macOS/Linux instead of
+        leaving an otherwise-idle ticket window covering the user's map.
         """
         for page in (self.sf_page, self.bug_page):
             try:
