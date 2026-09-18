@@ -39,6 +39,8 @@ from salesforce_routes import (
 )
 from browser_manager import BrowserManager
 from window_layout import (
+    chromeos_snap_right,
+    is_chromeos_crostini,
     minimize_chrome_window,
     move_chrome_window_to_bounds,
     restore_chrome_window,
@@ -442,7 +444,25 @@ class Workspace:
                 self.startup_sf_authenticated = sf_authenticated
 
     def set_managed_window_state(self, page: Any, state: str) -> None:
-        """Best-effort minimize/restore for the managed Chrome window."""
+        """Best-effort managed Chrome window state.
+
+        Windows, macOS, and normal Linux retain the existing behavior.
+        ChromeOS/Crostini intentionally never minimizes the Linux browser:
+        Sommelier can minimize the host Penguin window but Crostini cannot
+        reliably remap/restore that host window afterward.
+        """
+        crostini = False
+        try:
+            crostini = is_chromeos_crostini()
+        except Exception:
+            crostini = False
+
+        if crostini and state == "minimized":
+            # Keep the host surface mapped. The user may switch back to the Map;
+            # Begin will bring the correct tab forward and ask ChromeOS itself to
+            # snap the Penguin window to the right.
+            return
+
         try:
             assert self.browser is not None
             cdp = self.browser.context.new_cdp_session(page)
@@ -460,10 +480,7 @@ class Workspace:
         except Exception as error:
             print(f"Could not set paperwork browser state to {state}: {error}")
         finally:
-            # Keep the proven Windows/macOS path untouched. Linux desktop and
-            # ChromeOS Crostini get a native fallback only when CDP/window-state
-            # propagation is insufficient.
-            if platform.system().lower() == "linux":
+            if platform.system().lower() == "linux" and not crostini:
                 try:
                     if state == "normal":
                         restore_chrome_window()
@@ -486,6 +503,14 @@ class Workspace:
             page.bring_to_front()
         except Exception:
             pass
+        if is_chromeos_crostini():
+            # bring_to_front() changes Chromium's active tab and, while the
+            # Crostini surface remains mapped, gives ChromeOS/Sommelier a chance
+            # to focus that Penguin window before the host snap accelerator.
+            try:
+                page.wait_for_timeout(90)
+            except Exception:
+                pass
 
     def bootstrap_companion(self) -> None:
         """
@@ -998,6 +1023,24 @@ class Workspace:
         right_width = max(1, screen_width - split_x)
         right_left = left + split_x
 
+        # ChromeOS is not a normal Linux window manager. Crostini's X11 client
+        # list contains Sommelier rather than the host Penguin window, so
+        # wmctrl/CDP geometry cannot reliably place that host window. ChromeOS
+        # itself provides Alt+] to snap the active window to the right half, and
+        # Sommelier reserves that accelerator for Crostini applications.
+        if is_chromeos_crostini():
+            self.show_managed_page(page)
+            try:
+                page.wait_for_timeout(80)
+            except Exception:
+                pass
+            if not chromeos_snap_right():
+                print(
+                    "ChromeOS could not invoke the native right-snap shortcut. "
+                    "The browser remains usable but may need Alt+] once manually."
+                )
+            return
+
         try:
             assert self.browser is not None
             cdp = self.browser.context.new_cdp_session(page)
@@ -1064,7 +1107,7 @@ class Workspace:
 
         # Linux must follow the exact same map-supplied split as Windows/macOS.
         # Apply native X11/XWayland bounds only as a Linux/Crostini fallback.
-        if platform.system().lower() == "linux":
+        if platform.system().lower() == "linux" and not is_chromeos_crostini():
             try:
                 native_ok = move_chrome_window_to_bounds(
                     right_left, top, right_width, screen_height
